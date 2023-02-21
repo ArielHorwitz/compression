@@ -1,0 +1,11 @@
+[package]
+name = "compression"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+num-complex = "0.4"
+rustfft = "6.1.0"
+wav = "1.0.0"
+plotly = { version = "0.8.3", features = ["kaleido"] }
+inquire = { version = "0.5.3", features = ["date", "editor"] }
