@@ -14,7 +14,7 @@ pub fn plot(
 ) {
     let freq_legend = (0..data.len()).map(|x| x as f32 * resolution).collect();
     let mut plot = Plot::new();
-    let trace = Scatter::new(freq_legend, data.clone()).mode(Mode::Lines);
+    let trace = Scatter::new(freq_legend, data).mode(Mode::Lines);
     plot.add_trace(trace);
     let layout = Layout::new()
         .title(Title::new(title))
