@@ -32,7 +32,7 @@ fn prompt_rounding() -> Round {
 
 fn get_wav_file() -> (Vec<f32>, usize, String) {
     let file = prompt_file();
-    let (header, waveform) = compression::load_wav_file(&file).unwrap();
+    let (header, waveform) = compression::audio::load_wav_file(&file).unwrap();
     println!("Sample size: {}\n{:?}", waveform.len(), header);
     (waveform, header.sampling_rate as usize, file)
 }
