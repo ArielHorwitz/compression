@@ -1,13 +1,21 @@
 pub mod fft;
 pub mod plotting;
-use std::{fs::File, path::Path};
+use std::{error::Error, fs::File, path::Path};
+use thiserror::Error;
 use wav::{self, BitDepth, Header};
 
-pub fn load_wav_file(path: &str) -> Result<(wav::Header, Vec<f32>), std::io::Error> {
+#[derive(Error, Debug)]
+pub enum FormatError {
+    #[error("multiple channels not supported - convert to mono")]
+    UnsupportedChannels,
+}
+
+pub fn load_wav_file(path: &str) -> Result<(wav::Header, Vec<f32>), Box<dyn Error>> {
     let mut inp_file = File::open(Path::new(path))?;
-    let (header, data) =
-        wav::read(&mut inp_file).expect(&format!("Failed to read file {:?}", inp_file));
-    assert_eq!(header.channel_count, 1, "Channel is not mono!");
+    let (header, data) = wav::read(&mut inp_file)?;
+    if header.channel_count != 1 {
+        return Err(Box::new(FormatError::UnsupportedChannels));
+    }
     let data: Vec<f32> = match data {
         BitDepth::Eight(d) => d.iter().map(|x| x.clone() as f32).collect(),
         BitDepth::Sixteen(d) => d.iter().map(|x| x.clone() as f32).collect(),
@@ -18,12 +26,17 @@ pub fn load_wav_file(path: &str) -> Result<(wav::Header, Vec<f32>), std::io::Err
     Ok((header, data))
 }
 
-pub fn write_wav_file(path: &str, waveform: Vec<i16>, sample_rate: u32) {
-    let mut out_file = File::create(Path::new(path)).unwrap();
+pub fn write_wav_file(
+    path: &str,
+    waveform: Vec<i16>,
+    sample_rate: u32,
+) -> Result<(), std::io::Error> {
+    // TODO take bitdepth argument and match for `BitDepth` type
+    let mut out_file = File::create(Path::new(path))?;
     let header = Header::new(1, 1, sample_rate, 16);
     let track = BitDepth::Sixteen(waveform);
-    wav::write(header, &track, &mut out_file)
-        .expect(&format!("Failed to write file {:?}", out_file));
+    wav::write(header, &track, &mut out_file)?;
+    Ok(())
 }
 
 pub enum Round {
@@ -104,7 +117,8 @@ pub fn analyze_waveform(waveform: Vec<f32>, sample_rate: usize, config: Analysis
         &format!("{}waveform.wav", config.output_dir),
         waveform32,
         sample_rate as u32,
-    );
+    )
+    .expect("failed to write file");
     if config.print_progress {
         println!("Analysis written to disk.");
     }
