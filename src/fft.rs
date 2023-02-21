@@ -2,14 +2,6 @@ use num_complex::Complex32;
 use rustfft::{algorithm::Dft, Fft, FftDirection};
 use std::f32::consts::PI;
 
-pub fn basefft(samples: &[Complex32]) -> Vec<Complex32> {
-    // Computes a forward FFT
-    let mut result = samples.to_vec();
-    let fft = Dft::new(result.len(), FftDirection::Forward);
-    fft.process(&mut result);
-    result
-}
-
 pub fn convert_sample(sample: &[f32]) -> Vec<Complex32> {
     sample.iter().map(|x| Complex32::from(x.clone())).collect()
 }
@@ -38,15 +30,6 @@ pub fn round_sample_size_down<T: Default + Clone>(sample: &mut Vec<T>) {
     }
 }
 
-pub fn frequency_bins(sample: &[Complex32]) -> Vec<f32> {
-    let sample_size = sample.len() as f32;
-    let alias_index = (sample_size / 2.) as usize;
-    sample[0..alias_index]
-        .iter()
-        .map(|x| x.norm() * 2. / sample_size)
-        .collect()
-}
-
 pub fn fft(samples: &Vec<Complex32>) -> Vec<Complex32> {
     assert_sample_size(&samples);
     fft_recursive(samples.clone(), 1.)
@@ -58,6 +41,15 @@ pub fn fft_inverse(samples: &Vec<Complex32>) -> Vec<Complex32> {
     fft_recursive(samples.clone(), -1.)
         .iter()
         .map(|x| x / sample_size)
+        .collect()
+}
+
+pub fn frequency_bins(sample: &[Complex32]) -> Vec<f32> {
+    let sample_size = sample.len() as f32;
+    let alias_index = (sample_size / 2.) as usize;
+    sample[0..alias_index]
+        .iter()
+        .map(|x| x.norm() * 2. / sample_size)
         .collect()
 }
 
@@ -100,6 +92,15 @@ fn assert_sample_size(samples: &Vec<Complex32>) {
         "Sample size is not a power of 2: {}",
         samples.len()
     );
+}
+
+#[allow(dead_code)] // For testing
+fn basefft(samples: &[Complex32]) -> Vec<Complex32> {
+    // Computes a forward FFT
+    let mut result = samples.to_vec();
+    let fft = Dft::new(result.len(), FftDirection::Forward);
+    fft.process(&mut result);
+    result
 }
 
 #[cfg(test)]
