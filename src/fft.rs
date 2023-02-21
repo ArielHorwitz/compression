@@ -1,8 +1,8 @@
-use num_complex::Complex64;
+use num_complex::Complex32;
 use rustfft::{algorithm::Dft, Fft, FftDirection};
-use std::f64::consts::PI;
+use std::f32::consts::PI;
 
-pub fn basefft(samples: &[Complex64]) -> Vec<Complex64> {
+pub fn basefft(samples: &[Complex32]) -> Vec<Complex32> {
     // Computes a forward FFT
     let mut result = samples.to_vec();
     let fft = Dft::new(result.len(), FftDirection::Forward);
@@ -10,8 +10,8 @@ pub fn basefft(samples: &[Complex64]) -> Vec<Complex64> {
     result
 }
 
-pub fn convert_sample(sample: &[f64]) -> Vec<Complex64> {
-    sample.iter().map(|x| Complex64::from(x.clone())).collect()
+pub fn convert_sample(sample: &[f32]) -> Vec<Complex32> {
+    sample.iter().map(|x| Complex32::from(x.clone())).collect()
 }
 
 pub fn round_sample_size_up<T: Default + Clone>(sample: &mut Vec<T>) {
@@ -38,32 +38,30 @@ pub fn round_sample_size_down<T: Default + Clone>(sample: &mut Vec<T>) {
     }
 }
 
-pub fn frequency_bins(sample: &[Complex64], sample_rate: f64) -> Vec<f64> {
-    let sample_size = sample.len() as f64;
-    let frequency_resolution = sample_rate / sample_size;
-    let nyquist_limit = sample_rate / 2.;
-    let alias_index = (nyquist_limit / frequency_resolution) as usize;
+pub fn frequency_bins(sample: &[Complex32]) -> Vec<f32> {
+    let sample_size = sample.len() as f32;
+    let alias_index = (sample_size / 2.) as usize;
     sample[0..alias_index]
         .iter()
         .map(|x| x.norm() * 2. / sample_size)
         .collect()
 }
 
-pub fn fft(samples: &Vec<Complex64>) -> Vec<Complex64> {
+pub fn fft(samples: &Vec<Complex32>) -> Vec<Complex32> {
     assert_sample_size(&samples);
     fft_recursive(samples.clone(), 1.)
 }
 
-pub fn fft_inverse(samples: &Vec<Complex64>) -> Vec<Complex64> {
+pub fn fft_inverse(samples: &Vec<Complex32>) -> Vec<Complex32> {
     assert_sample_size(&samples);
-    let sample_size = samples.len() as f64;
+    let sample_size = samples.len() as f32;
     fft_recursive(samples.clone(), -1.)
         .iter()
         .map(|x| x / sample_size)
         .collect()
 }
 
-fn fft_recursive(sample: Vec<Complex64>, coeff: f64) -> Vec<Complex64> {
+fn fft_recursive(sample: Vec<Complex32>, coeff: f32) -> Vec<Complex32> {
     // WARNING: will fail if sample size is not 2^n
     let sample_size = sample.len();
     if sample_size == 1 {
@@ -82,19 +80,19 @@ fn fft_recursive(sample: Vec<Complex64>, coeff: f64) -> Vec<Complex64> {
     let freq_odds = fft_recursive(odds, coeff);
 
     // Calculate frequency bins
-    let mut freq_bins = vec![Complex64::new(0., 0.); sample_size];
-    let coeff_const = Complex64::new(0., coeff * -2. * PI / sample_size as f64);
+    let mut freq_bins = vec![Complex32::default(); sample_size];
+    let coeff_const = Complex32::new(0., coeff * -2. * PI / sample_size as f32);
     for k in 0..half_size {
         let k2 = k + half_size;
-        let ek1 = coeff_const * k as f64;
-        let ek2 = coeff_const * k2 as f64;
+        let ek1 = coeff_const * k as f32;
+        let ek2 = coeff_const * k2 as f32;
         freq_bins[k] = freq_evens[k] + ek1.exp() * freq_odds[k];
         freq_bins[k2] = freq_evens[k] + ek2.exp() * freq_odds[k];
     }
     freq_bins
 }
 
-fn assert_sample_size(samples: &Vec<Complex64>) {
+fn assert_sample_size(samples: &Vec<Complex32>) {
     let sample_log = f32::log2(samples.len() as f32);
     assert_eq!(
         sample_log,
@@ -113,11 +111,11 @@ mod tests {
         let sample = convert_sample(&[0., 1., 0., -1.]);
         let result = fft(&sample);
         let expected = basefft(&sample);
-        let epsilon: f64 = 10f64.powi(-5);
+        let epsilon = 10f32.powi(-5);
         println!("result {:?}\nexpected {:?}", result, expected);
         for i in 0..expected.len() {
             let diff = result[i].l1_norm() - expected[i].l1_norm();
-            assert!(f64::abs(diff) < epsilon);
+            assert!(f32::abs(diff) < epsilon);
         }
     }
 
@@ -125,11 +123,11 @@ mod tests {
     fn inversion() {
         let sample = convert_sample(&[1., 2., 3., 4., 5., 6., 7., 8.]);
         let result = fft(&fft_inverse(&sample));
-        let epsilon: f64 = 10f64.powi(-5);
+        let epsilon = 10f32.powi(-5);
         println!("result {:?}\nexpected {:?}", sample, result);
         for i in 0..result.len() {
             let diff = sample[i].l1_norm() - result[i].l1_norm();
-            assert!(f64::abs(diff) < epsilon);
+            assert!(f32::abs(diff) < epsilon);
         }
     }
 }

@@ -5,14 +5,14 @@ use plotly::{
 };
 
 pub fn plot(
-    data: Vec<f64>,
-    resolution: f64,
+    data: Vec<f32>,
+    resolution: f32,
     title: &str,
     file_path: &str,
     x_axis: &str,
     y_axis: &str,
 ) {
-    let freq_legend = (0..data.len()).map(|x| x as f64 * resolution).collect();
+    let freq_legend = (0..data.len()).map(|x| x as f32 * resolution).collect();
     let mut plot = Plot::new();
     let trace = Scatter::new(freq_legend, data.clone()).mode(Mode::Lines);
     plot.add_trace(trace);

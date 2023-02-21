@@ -3,16 +3,16 @@ pub mod plotting;
 use std::{fs::File, path::Path};
 use wav::{self, BitDepth, Header};
 
-pub fn load_wav_file(path: &str) -> Result<(wav::Header, Vec<f64>), std::io::Error> {
+pub fn load_wav_file(path: &str) -> Result<(wav::Header, Vec<f32>), std::io::Error> {
     let mut inp_file = File::open(Path::new(path))?;
     let (header, data) =
         wav::read(&mut inp_file).expect(&format!("Failed to read file {:?}", inp_file));
     assert_eq!(header.channel_count, 1, "Channel is not mono!");
-    let data: Vec<f64> = match data {
-        BitDepth::Eight(d) => d.iter().map(|x| x.clone() as f64).collect(),
-        BitDepth::Sixteen(d) => d.iter().map(|x| x.clone() as f64).collect(),
-        BitDepth::TwentyFour(d) => d.iter().map(|x| x.clone() as f64).collect(),
-        BitDepth::ThirtyTwoFloat(d) => d.iter().map(|x| x.clone() as f64).collect(),
+    let data: Vec<f32> = match data {
+        BitDepth::Eight(d) => d.iter().map(|x| x.clone() as f32).collect(),
+        BitDepth::Sixteen(d) => d.iter().map(|x| x.clone() as f32).collect(),
+        BitDepth::TwentyFour(d) => d.iter().map(|x| x.clone() as f32).collect(),
+        BitDepth::ThirtyTwoFloat(d) => d.iter().map(|x| x.clone() as f32).collect(),
         BitDepth::Empty => Vec::from([0.]),
     };
     Ok((header, data))
@@ -54,7 +54,7 @@ impl AnalysisConfig {
     }
 }
 
-pub fn analyze_waveform(waveform: Vec<f64>, sample_rate: f64, config: AnalysisConfig) {
+pub fn analyze_waveform(waveform: Vec<f32>, sample_rate: usize, config: AnalysisConfig) {
     if config.print_progress {
         println!("Converting...");
     }
@@ -71,14 +71,14 @@ pub fn analyze_waveform(waveform: Vec<f64>, sample_rate: f64, config: AnalysisCo
     if config.print_progress {
         println!("Analysing...");
     }
-    let freq_bins = fft::frequency_bins(&freq_domain, sample_rate);
+    let freq_bins = fft::frequency_bins(&freq_domain);
     if config.print_progress {
         println!("Drawing waveform...");
     }
     let sample_size = waveform.len();
     plotting::plot(
         waveform,
-        1. / sample_rate,
+        1. / sample_rate as f32,
         &format!("{} - time domain", config.name),
         &format!("{}time.html", config.output_dir),
         "Time (seconds)",
@@ -87,7 +87,7 @@ pub fn analyze_waveform(waveform: Vec<f64>, sample_rate: f64, config: AnalysisCo
     if config.print_progress {
         println!("Drawing frequencies...");
     }
-    let freq_resolution = sample_rate / sample_size as f64;
+    let freq_resolution = sample_rate as f32 / sample_size as f32;
     plotting::plot(
         freq_bins,
         freq_resolution,

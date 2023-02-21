@@ -30,16 +30,16 @@ fn prompt_rounding() -> Round {
     Round::Down
 }
 
-fn get_wav_file() -> (Vec<f64>, f64, String) {
+fn get_wav_file() -> (Vec<f32>, usize, String) {
     let file = prompt_file();
     let (header, waveform) = compression::load_wav_file(&file).unwrap();
     println!("Sample size: {}\n{:?}", waveform.len(), header);
-    (waveform, header.sampling_rate as f64, file)
+    (waveform, header.sampling_rate as usize, file)
 }
 
-fn get_custom() -> (Vec<f64>, f64, String) {
+fn get_custom() -> (Vec<f32>, usize, String) {
     let waveform = [0., 22937., 32767., 22937., 0., -22937., -32767., -22937.].to_vec();
-    let sample_rate = 44100.;
+    let sample_rate = 44100;
     (waveform, sample_rate, String::from("custom waveform"))
 }
 
