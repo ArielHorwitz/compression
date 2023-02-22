@@ -1,7 +1,7 @@
 use compression::{audio, common::WaveformMetadata, fft, plotting::plot};
 use inquire::Select;
 
-const OUTPUT_DIR: &str = "data/";
+const DATA_DIR: &str = "data/";
 
 fn main() {
     load_data();
@@ -13,7 +13,7 @@ fn load_data() {
         let mode = Select::new("Select Data:", options)
             .prompt_skippable()
             .unwrap();
-        let (mut waveform, sample_rate, name) = match mode {
+        let (metadata, mut waveform) = match mode {
             Some("File") => {
                 if let Some(file) = prompt_file() {
                     get_wav_file(file)
@@ -24,26 +24,30 @@ fn load_data() {
             Some("Custom") => get_custom(),
             _ => break,
         };
-        analyze_waveform(&mut waveform, sample_rate, &name);
+        analyze_waveform(metadata, &mut waveform);
     }
 }
 
-fn get_wav_file(file: String) -> (Vec<f32>, usize, String) {
-    let (header, waveform) = compression::audio::load_wav_file(&file).unwrap();
-    println!("{:?}", header);
-    (waveform, header.sampling_rate as usize, file)
+fn get_wav_file(file: String) -> (WaveformMetadata, Vec<f32>) {
+    let (metadata, waveform) = compression::audio::load_wav_file(&file).unwrap();
+    println!("{:?}", metadata);
+    (metadata, waveform)
 }
 
-fn get_custom() -> (Vec<f32>, usize, String) {
+fn get_custom() -> (WaveformMetadata, Vec<f32>) {
     let waveform = [0., 22937., 32767., 22937., 0., -22937., -32767., -22937.].to_vec();
     let sample_rate = 44100;
-    (waveform, sample_rate, String::from("custom waveform"))
+    let bit_rate = 16;
+    let metadata = WaveformMetadata::new("custom waveform", waveform.len(), sample_rate, bit_rate);
+    (metadata, waveform)
 }
 
-fn analyze_waveform(waveform: &mut Vec<f32>, sample_rate: usize, name: &str) {
+fn analyze_waveform(metadata: WaveformMetadata, waveform: &mut Vec<f32>) {
     prompt_round_sample(waveform);
-    let sample_size = waveform.len();
-    let metadata = WaveformMetadata::new(name, sample_size, sample_rate);
+    let metadata = WaveformMetadata {
+        sample_size: waveform.len(),
+        ..metadata
+    };
     let time_domain = fft::convert_sample(&waveform);
     loop {
         let option = match prompt_analysis_option() {
@@ -53,12 +57,16 @@ fn analyze_waveform(waveform: &mut Vec<f32>, sample_rate: usize, name: &str) {
         match option {
             AnalysisOption::Plot => {
                 let freq_bins = fft::frequency_bins(&fft::fft(&time_domain));
-                let file_path = format!("{OUTPUT_DIR}analysis.html");
+                let file_path = format!("{DATA_DIR}analysis.html");
                 plot(waveform.clone(), freq_bins, &metadata, &file_path);
             }
             AnalysisOption::Export => {
                 let modified_waveform = time_domain.iter().map(|x| x.re as i16).collect();
-                export_waveform(modified_waveform, sample_rate as u32);
+                let modified_metadata = &WaveformMetadata {
+                    name: format!("{}_modified", metadata.name),
+                    ..metadata
+                };
+                export_waveform(modified_waveform, modified_metadata);
             }
         }
     }
@@ -90,15 +98,15 @@ fn prompt_analysis_option() -> Option<AnalysisOption> {
     }
 }
 
-fn export_waveform(waveform: Vec<i16>, sample_rate: u32) {
-    let path = format!("{}waveform.wav", OUTPUT_DIR);
+fn export_waveform(waveform: Vec<i16>, metadata: &WaveformMetadata) {
+    let path = format!("{}{}.wav", DATA_DIR, metadata.name);
     println!("Exporting {path}");
-    audio::write_wav_file(&path, waveform, sample_rate).expect("failed to write file");
+    audio::write_wav_file(&path, waveform, metadata).expect("failed to write file");
 }
 
 fn prompt_file() -> Option<String> {
     let mut files = Vec::new();
-    for path in std::fs::read_dir(OUTPUT_DIR).unwrap() {
+    for path in std::fs::read_dir(DATA_DIR).unwrap() {
         let p = path
             .unwrap()
             .path()
