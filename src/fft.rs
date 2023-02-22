@@ -8,26 +8,14 @@ pub fn convert_sample(sample: &[f32]) -> Vec<Complex32> {
 
 pub fn round_sample_size_up<T: Default + Clone>(sample: &mut Vec<T>) {
     let original_size = sample.len();
-    let mut padded_size = 1;
-    for i in 0.. {
-        padded_size = 2u32.pow(i) as usize;
-        if padded_size >= original_size {
-            break;
-        }
-    }
-    let padding = padded_size - original_size;
+    let nearest_power2 = 2f64.powf((original_size as f64).log2().ceil()) as usize;
+    let padding = nearest_power2 - original_size;
     sample.append(&mut vec![T::default(); padding]);
 }
 
 pub fn round_sample_size_down<T: Default + Clone>(sample: &mut Vec<T>) {
-    let original_size = sample.len();
-    for i in 0.. {
-        let new_size = 2usize.pow(i);
-        if new_size <= original_size && original_size < 2usize.pow(i + 1) {
-            sample.drain(new_size..);
-            return;
-        }
-    }
+    let nearest_power2 = 2f64.powf((sample.len() as f64).log2().floor()) as usize;
+    sample.drain(nearest_power2..);
 }
 
 pub fn fft(samples: &Vec<Complex32>) -> Vec<Complex32> {
