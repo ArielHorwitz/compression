@@ -11,36 +11,18 @@ fn main() {
 
 fn load_data() {
     loop {
-        let options = vec!["Custom", "File", "Exit"];
-        let mode = Select::new("Select Data:", options)
-            .prompt_skippable()
-            .unwrap();
-        let (metadata, mut waveform) = match mode {
-            Some("File") => {
-                if let Some(file) = prompt_file() {
-                    get_wav_file(file)
-                } else {
-                    break;
-                }
-            }
-            Some("Custom") => get_custom(),
-            _ => break,
-        };
-        analyze_waveform(metadata, &mut waveform);
+        if let Some(file) = prompt_file() {
+            let (metadata, mut waveform) = get_wav_file(file);
+            analyze_waveform(metadata, &mut waveform);
+        } else {
+            break;
+        }
     }
 }
 
 fn get_wav_file(file: String) -> (WaveformMetadata, Vec<f32>) {
     let (metadata, waveform) = compression::audio::load_wav_file(&file).unwrap();
     println!("{:?}", metadata);
-    (metadata, waveform)
-}
-
-fn get_custom() -> (WaveformMetadata, Vec<f32>) {
-    let waveform = [0., 22937., 32767., 22937., 0., -22937., -32767., -22937.].to_vec();
-    let sample_rate = 44100;
-    let bit_rate = 16;
-    let metadata = WaveformMetadata::new("custom waveform", waveform.len(), sample_rate, bit_rate);
     (metadata, waveform)
 }
 
@@ -90,7 +72,6 @@ fn prompt_analysis_option() -> Option<AnalysisOption> {
         "Plot domains".to_string(),
         "Flatten range".to_string(),
         "Export waveform".to_string(),
-        "Back".to_string(),
     ]
     .to_vec();
     let uinput = Select::new("Options:", option_names)
@@ -169,13 +150,12 @@ fn prompt_file() -> Option<String> {
 }
 
 fn prompt_round_sample(vec: &mut Vec<f32>) {
-    let selection = Select::new("Round to 2^n:", vec!["up", "down"])
+    let selection = Select::new("Round to 2^n:", vec!["down", "up"])
         .prompt_skippable()
         .unwrap();
     match selection {
-        Some("up") => fft::round_sample_size_up(vec),
         Some("down") => fft::round_sample_size_down(vec),
-        _ => (),
+        _ => fft::round_sample_size_up(vec),
     }
     println!("New sample size: {}", vec.len());
 }
