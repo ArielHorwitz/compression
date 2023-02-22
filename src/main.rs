@@ -1,5 +1,7 @@
+use std::ops::RangeInclusive;
+
 use compression::{audio, common::WaveformMetadata, fft, plotting::plot};
-use inquire::Select;
+use inquire::{validator::Validation, Select, Text};
 
 const DATA_DIR: &str = "data/";
 
@@ -48,7 +50,7 @@ fn analyze_waveform(metadata: WaveformMetadata, waveform: &mut Vec<f32>) {
         sample_size: waveform.len(),
         ..metadata
     };
-    let time_domain = fft::convert_sample(&waveform);
+    let mut time_domain = fft::convert_sample(&waveform);
     loop {
         let option = match prompt_analysis_option() {
             Some(opt) => opt,
@@ -59,6 +61,11 @@ fn analyze_waveform(metadata: WaveformMetadata, waveform: &mut Vec<f32>) {
                 let freq_bins = fft::frequency_bins(&fft::fft(&time_domain));
                 let file_path = format!("{DATA_DIR}analysis.html");
                 plot(waveform.clone(), freq_bins, &metadata, &file_path);
+            }
+            AnalysisOption::FlattenRange(range) => {
+                let mut freq_domain = fft::fft(&time_domain);
+                audio::flatten_freq_range(&mut freq_domain, &metadata, range).unwrap_or_default();
+                time_domain = fft::fft_inverse(&freq_domain);
             }
             AnalysisOption::Export => {
                 let modified_waveform = time_domain.iter().map(|x| x.re as i16).collect();
@@ -74,12 +81,14 @@ fn analyze_waveform(metadata: WaveformMetadata, waveform: &mut Vec<f32>) {
 
 enum AnalysisOption {
     Plot,
+    FlattenRange(RangeInclusive<f32>),
     Export,
 }
 
 fn prompt_analysis_option() -> Option<AnalysisOption> {
     let option_names: Vec<String> = [
         "Plot domains".to_string(),
+        "Flatten range".to_string(),
         "Export waveform".to_string(),
         "Back".to_string(),
     ]
@@ -90,11 +99,49 @@ fn prompt_analysis_option() -> Option<AnalysisOption> {
     if let Some(option) = uinput {
         match option.as_str() {
             "Plot domains" => Some(AnalysisOption::Plot),
+            "Flatten range" => {
+                if let Some(range) = prompt_range() {
+                    Some(AnalysisOption::FlattenRange(range))
+                } else {
+                    None
+                }
+            }
             "Export waveform" => Some(AnalysisOption::Export),
             _ => None,
         }
     } else {
         None
+    }
+}
+
+fn prompt_range() -> Option<RangeInclusive<f32>> {
+    let start = Text::new("Start:")
+        .with_validator(validate_numbers)
+        .prompt_skippable()
+        .unwrap();
+    if let Some(start) = start {
+        let end = Text::new("End:")
+            .with_validator(validate_numbers)
+            .prompt_skippable()
+            .unwrap();
+        if let Some(end) = end {
+            Some(start.parse::<f32>().unwrap()..=end.parse::<f32>().unwrap())
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+fn validate_numbers(
+    s: &str,
+) -> Result<Validation, Box<(dyn std::error::Error + Send + Sync + 'static)>> {
+    match s.parse::<f32>() {
+        Ok(_) => Ok(Validation::Valid),
+        Err(_) => Ok(Validation::Invalid(
+            inquire::validator::ErrorMessage::Custom("Not a valid number".to_string()),
+        )),
     }
 }
 

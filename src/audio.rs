@@ -1,4 +1,5 @@
-use std::{error::Error, fs::File, path::Path};
+use num_complex::Complex32;
+use std::{error::Error, fs::File, ops::RangeInclusive, path::Path};
 use thiserror::Error;
 use wav::{BitDepth, Header};
 
@@ -45,5 +46,18 @@ pub fn write_wav_file(
     let header = Header::new(1, 1, metadata.sample_rate as u32, metadata.bit_rate as u16);
     let track = BitDepth::Sixteen(waveform);
     wav::write(header, &track, &mut out_file)?;
+    Ok(())
+}
+
+pub fn flatten_freq_range(
+    freq_domain: &mut Vec<Complex32>,
+    metadata: &WaveformMetadata,
+    range: RangeInclusive<f32>,
+) -> Result<(), ()> {
+    let start = (range.start() / metadata.freq_resolution) as usize;
+    let end = (range.end() / metadata.freq_resolution) as usize;
+    let range = start..=end;
+    let replace_with = vec![Complex32::default(); end - start + 1];
+    freq_domain.splice(range, replace_with);
     Ok(())
 }
