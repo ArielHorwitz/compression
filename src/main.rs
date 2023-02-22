@@ -29,18 +29,17 @@ fn get_wav_file(file: String) -> (WaveformMetadata, Vec<f32>) {
 fn analyze_waveform(metadata: WaveformMetadata, waveform: &mut Vec<f32>) {
     let metadata = prompt_round_sample(waveform, &metadata);
     println!("{:?}", metadata);
+    let file_path = format!("{DATA_DIR}analysis.html");
     let mut time_domain = fft::convert_sample(&waveform);
     loop {
+        let freq_bins = fft::frequency_bins(&fft::fft(&time_domain));
+        println!("Plotting...");
+        plot(waveform.clone(), freq_bins, &metadata, &file_path);
         let option = match prompt_analysis_option() {
             Some(opt) => opt,
             None => break,
         };
         match option {
-            AnalysisOption::Plot => {
-                let freq_bins = fft::frequency_bins(&fft::fft(&time_domain));
-                let file_path = format!("{DATA_DIR}analysis.html");
-                plot(waveform.clone(), freq_bins, &metadata, &file_path);
-            }
             AnalysisOption::FlattenRange(range) => {
                 let mut freq_domain = fft::fft(&time_domain);
                 audio::flatten_freq_range(&mut freq_domain, &metadata, range).unwrap_or_default();
@@ -59,24 +58,18 @@ fn analyze_waveform(metadata: WaveformMetadata, waveform: &mut Vec<f32>) {
 }
 
 enum AnalysisOption {
-    Plot,
     FlattenRange(RangeInclusive<f32>),
     Export,
 }
 
 fn prompt_analysis_option() -> Option<AnalysisOption> {
-    let option_names: Vec<String> = [
-        "Plot domains".to_string(),
-        "Flatten range".to_string(),
-        "Export waveform".to_string(),
-    ]
-    .to_vec();
+    let option_names: Vec<String> =
+        ["Flatten range".to_string(), "Export waveform".to_string()].to_vec();
     let uinput = Select::new("Options:", option_names)
         .prompt_skippable()
         .unwrap();
     if let Some(option) = uinput {
         match option.as_str() {
-            "Plot domains" => Some(AnalysisOption::Plot),
             "Flatten range" => {
                 if let Some(range) = prompt_range() {
                     Some(AnalysisOption::FlattenRange(range))
