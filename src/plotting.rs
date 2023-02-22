@@ -11,7 +11,7 @@ pub fn plot(waveform: Vec<f32>, freq_bins: Vec<f32>, metadata: &WaveformMetadata
         .collect();
     let waveform_trace = Scatter::new(waveform_legend, waveform)
         .mode(Mode::Lines)
-        .name("time")
+        .name("")
         .x_axis("x1")
         .y_axis("y1");
     let freq_legend = (0..freq_bins.len())
@@ -19,7 +19,7 @@ pub fn plot(waveform: Vec<f32>, freq_bins: Vec<f32>, metadata: &WaveformMetadata
         .collect();
     let freq_bins_trace = Scatter::new(freq_legend, freq_bins)
         .mode(Mode::Lines)
-        .name("freq")
+        .name("")
         .x_axis("x2")
         .y_axis("y2");
     let layout = Layout::new()
@@ -35,6 +35,7 @@ pub fn plot(waveform: Vec<f32>, freq_bins: Vec<f32>, metadata: &WaveformMetadata
         .y_axis(Axis::new().title(Title::new("Amplitude")))
         .x_axis2(Axis::new().title(Title::new("Frequency (Hz)")))
         .y_axis2(Axis::new().title(Title::new("Amplitude")))
+        .show_legend(false)
         .width(1900)
         .height(800);
     let mut plot = Plot::new();
