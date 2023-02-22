@@ -1,6 +1,5 @@
-use compression::{audio, fft, plotting};
+use compression::{audio, common::WaveformMetadata, fft, plotting::plot};
 use inquire::Select;
-use num_complex::Complex32;
 
 const OUTPUT_DIR: &str = "data/";
 
@@ -44,6 +43,7 @@ fn get_custom() -> (Vec<f32>, usize, String) {
 fn analyze_waveform(waveform: &mut Vec<f32>, sample_rate: usize, name: &str) {
     prompt_round_sample(waveform);
     let sample_size = waveform.len();
+    let metadata = WaveformMetadata::new(name, sample_size, sample_rate);
     let time_domain = fft::convert_sample(&waveform);
     loop {
         let option = match prompt_analysis_option() {
@@ -52,10 +52,9 @@ fn analyze_waveform(waveform: &mut Vec<f32>, sample_rate: usize, name: &str) {
         };
         match option {
             AnalysisOption::Plot => {
-                plot_time_domain(waveform.clone(), sample_rate as u32, name);
-                let freq_domain = fft::fft(&time_domain);
-                let freq_resolution = sample_rate as f32 / sample_size as f32;
-                plot_freqbins(&freq_domain, freq_resolution, name);
+                let freq_bins = fft::frequency_bins(&fft::fft(&time_domain));
+                let file_path = format!("{OUTPUT_DIR}analysis.html");
+                plot(waveform.clone(), freq_bins, &metadata, &file_path);
             }
             AnalysisOption::Export => {
                 let modified_waveform = time_domain.iter().map(|x| x.re as i16).collect();
@@ -89,30 +88,6 @@ fn prompt_analysis_option() -> Option<AnalysisOption> {
     } else {
         None
     }
-}
-
-fn plot_time_domain(time_domain: Vec<f32>, sample_rate: u32, name: &str) {
-    plotting::plot(
-        time_domain,
-        1. / sample_rate as f32,
-        &format!("{} - time domain", &name),
-        &format!("{}time.html", OUTPUT_DIR),
-        "Time (seconds)",
-        "Amplitude",
-    );
-}
-
-fn plot_freqbins(freq_domain: &Vec<Complex32>, freq_resolution: f32, name: &str) {
-    println!("Drawing frequencies...");
-    let freq_bins = fft::frequency_bins(freq_domain);
-    plotting::plot(
-        freq_bins,
-        freq_resolution,
-        &format!("{} - frequency domain", name),
-        &format!("{}freq.html", OUTPUT_DIR),
-        "Frequency (Hz)",
-        "Amplitude",
-    );
 }
 
 fn export_waveform(waveform: Vec<i16>, sample_rate: u32) {

@@ -1,0 +1,18 @@
+pub struct WaveformMetadata {
+    pub name: String,
+    pub sample_size: usize,
+    pub sample_rate: usize,
+    pub freq_resolution: f32,
+}
+
+impl WaveformMetadata {
+    pub fn new(name: &str, sample_size: usize, sample_rate: usize) -> WaveformMetadata {
+        let freq_resolution = sample_rate as f32 / sample_size as f32;
+        WaveformMetadata {
+            name: name.to_string(),
+            sample_size,
+            sample_rate,
+            freq_resolution,
+        }
+    }
+}
