@@ -1,6 +1,7 @@
 use super::common::WaveformMetadata;
 use plotly::{
-    common::{Mode, Title},
+    color::NamedColor,
+    common::{Line, Mode, Title},
     layout::{Axis, GridPattern, LayoutGrid, RowOrder},
     Layout, Plot, Scatter,
 };
@@ -12,6 +13,7 @@ pub fn plot(waveform: Vec<f32>, freq_bins: Vec<f32>, metadata: &WaveformMetadata
     let waveform_trace = Scatter::new(waveform_legend, waveform)
         .mode(Mode::Lines)
         .name("")
+        .line(Line::new().color(NamedColor::Blue))
         .x_axis("x1")
         .y_axis("y1");
     let freq_legend = (0..freq_bins.len())
@@ -20,6 +22,7 @@ pub fn plot(waveform: Vec<f32>, freq_bins: Vec<f32>, metadata: &WaveformMetadata
     let freq_bins_trace = Scatter::new(freq_legend, freq_bins)
         .mode(Mode::Lines)
         .name("")
+        .line(Line::new().color(NamedColor::IndianRed))
         .x_axis("x2")
         .y_axis("y2");
     let layout = Layout::new()
