@@ -27,11 +27,8 @@ fn get_wav_file(file: String) -> (WaveformMetadata, Vec<f32>) {
 }
 
 fn analyze_waveform(metadata: WaveformMetadata, waveform: &mut Vec<f32>) {
-    prompt_round_sample(waveform);
-    let metadata = WaveformMetadata {
-        sample_size: waveform.len(),
-        ..metadata
-    };
+    let metadata = prompt_round_sample(waveform, &metadata);
+    println!("{:?}", metadata);
     let mut time_domain = fft::convert_sample(&waveform);
     loop {
         let option = match prompt_analysis_option() {
@@ -149,13 +146,18 @@ fn prompt_file() -> Option<String> {
     Select::new("File:", files).prompt_skippable().unwrap()
 }
 
-fn prompt_round_sample(vec: &mut Vec<f32>) {
+fn prompt_round_sample(vec: &mut Vec<f32>, metadata: &WaveformMetadata) -> WaveformMetadata {
     let selection = Select::new("Round to 2^n:", vec!["down", "up"])
         .prompt_skippable()
         .unwrap();
     match selection {
         Some("down") => fft::round_sample_size_down(vec),
         _ => fft::round_sample_size_up(vec),
-    }
-    println!("New sample size: {}", vec.len());
+    };
+    WaveformMetadata::new(
+        &metadata.name,
+        vec.len(),
+        metadata.sample_rate,
+        metadata.bit_rate,
+    )
 }
