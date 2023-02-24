@@ -1,5 +1,6 @@
 use clap::Parser;
-use compression::{fft, plotting::plot};
+use compression::fft;
+use compression::utils;
 use std::process::Command;
 
 /// Proof of concept for compressing and decompressing media files.
@@ -33,11 +34,11 @@ fn main() {
     } else if suffix == "wav" {
         let output_file = format!("{}{}.cmp", args.output_dir, stem);
         println!("Compressing to: {output_file}");
-        compression::compress_wav(&args.file, &output_file, args.freq_cutoff).unwrap();
+        utils::compress_wav(&args.file, &output_file, args.freq_cutoff).unwrap();
     } else if suffix == "cmp" {
         let output_file = format!("{}{}.wav", args.output_dir, stem);
         println!("Decompressing to: {output_file}");
-        compression::decompress_wav(&args.file, &output_file).unwrap();
+        utils::decompress_wav(&args.file, &output_file).unwrap();
     } else {
         panic!("File suffix unrecognized: {file}");
     }
@@ -45,11 +46,11 @@ fn main() {
 
 fn analyze_waveform(wav_file: &str, output_dir: &str) {
     let file_path = format!("{output_dir}analysis.html");
-    let (metadata, mut waveform) = compression::audio::load_wav_file(wav_file).unwrap();
+    let (metadata, mut waveform) = utils::load_wav_file(wav_file).unwrap();
     fft::round_sample_size_up(&mut waveform);
     let time_domain = fft::convert_sample(&waveform);
     let freq_bins = fft::frequency_bins(&fft::fft(&time_domain));
     println!("Writing analysis to: {file_path}");
-    plot(waveform.clone(), freq_bins, &metadata, &file_path);
+    utils::plot(waveform.clone(), freq_bins, &metadata, &file_path);
     Command::new("xdg-open").arg(file_path).spawn().unwrap();
 }
