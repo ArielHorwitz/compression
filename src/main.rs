@@ -12,8 +12,10 @@ fn main() {
 fn load_data() {
     loop {
         if let Some(file) = prompt_file() {
-            let (metadata, mut waveform) = get_wav_file(file);
-            analyze_waveform(metadata, &mut waveform);
+            compression::compress_wav(&file, "data/test.cmp", 3000).unwrap();
+            compression::decompress_wav("data/test.cmp", "data/test.wav").unwrap();
+            // let (metadata, mut waveform) = get_wav_file(file);
+            // analyze_waveform(metadata, &mut waveform);
         } else {
             break;
         }
