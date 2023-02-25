@@ -27,7 +27,13 @@ pub fn analyze_waveform(wav_file: &str, output_dir: &str) -> Result<String, Box<
     let time_domain = fft::convert_sample(&waveform);
     let freq_bins = fft::frequency_bins(&fft::fft(&time_domain));
     println!("Writing analysis to: {file_path}");
-    plot(waveform.clone(), freq_bins, &metadata, &file_path);
+    plot(
+        waveform.clone(),
+        freq_bins,
+        &metadata,
+        &file_path,
+        &wav_file,
+    );
     Ok(file_path)
 }
 
@@ -44,13 +50,7 @@ pub fn load_wav_file(path: &str) -> Result<(WaveformMetadata, Vec<f32>), Box<dyn
         BitDepth::ThirtyTwoFloat(d) => d.iter().map(|x| x.clone() as f32).collect(),
         BitDepth::Empty => Vec::from([0.]),
     };
-    let modified_name = path.strip_suffix(".wav").unwrap_or("unknown");
-    let (_, modified_name) = modified_name
-        .rsplit_once("/")
-        .unwrap_or(("", modified_name));
     let metadata = WaveformMetadata::new(
-        modified_name,
-        waveform.len(),
         header.sampling_rate as usize,
         header.bits_per_sample as usize,
     );
@@ -71,28 +71,20 @@ pub fn write_wav_file(
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WaveformMetadata {
-    pub name: String,
-    pub sample_size: usize,
     pub sample_rate: usize,
-    pub freq_resolution: f32,
     pub bit_rate: usize,
 }
 
 impl WaveformMetadata {
-    pub fn new(
-        name: &str,
-        sample_size: usize,
-        sample_rate: usize,
-        bit_rate: usize,
-    ) -> WaveformMetadata {
-        let freq_resolution = sample_rate as f32 / sample_size as f32;
+    pub fn new(sample_rate: usize, bit_rate: usize) -> WaveformMetadata {
         WaveformMetadata {
-            name: name.to_string(),
-            sample_size,
             sample_rate,
-            freq_resolution,
             bit_rate,
         }
+    }
+
+    pub fn freq_resolution(&self, sample_size: usize) -> f32 {
+        self.sample_rate as f32 / sample_size as f32
     }
 }
 
@@ -120,7 +112,7 @@ impl CompressedData {
     }
 }
 
-/// Compress a .wav file for later decompression using [`decompress`].
+/// Compress a .wav file for later decompression using [`decompress_wav`].
 ///
 /// The frequency cutoff is the highest frequency to maintain: lower = smaller compressed size,
 /// higher = better quality.
@@ -130,18 +122,20 @@ pub fn compress_wav(
     freq_cutoff: usize,
 ) -> Result<(), Box<dyn Error>> {
     let (metadata, mut waveform) = load_wav_file(&wav_file)?;
+    let original_size = waveform.len();
     fft::round_sample_size_up(&mut waveform);
     let time_domain = fft::convert_sample(&waveform);
     let mut freq_domain = fft::fft(&time_domain);
-    let highest_bin = f32::ceil(freq_cutoff as f32 / metadata.freq_resolution) as usize;
+    let freq_resolution = metadata.freq_resolution(waveform.len());
+    let highest_bin = f32::ceil(freq_cutoff as f32 / freq_resolution) as usize;
     let highest_bin = highest_bin.min(freq_domain.len()).max(0);
     let cutoff_zeros = freq_domain.len() - highest_bin;
     freq_domain.drain(highest_bin..);
-    let freq: Vec<(f32, f32)> = freq_domain.iter().map(|c| (c.re, c.im)).collect();
+    let frequencies: Vec<(f32, f32)> = freq_domain.iter().map(|c| (c.re, c.im)).collect();
     let compressed = CompressedData::new(
         metadata.sample_rate,
-        metadata.sample_size,
-        freq,
+        original_size,
+        frequencies,
         cutoff_zeros,
     );
     let encoded = bincode::serialize(&compressed)?;
@@ -150,7 +144,7 @@ pub fn compress_wav(
     Ok(())
 }
 
-/// Decompress a .wav file from [`compress`].
+/// Decompress a .wav file from [`compress_wav`].
 pub fn decompress_wav(compressed_file: &str, output_file: &str) -> Result<(), Box<dyn Error>> {
     let mut encoded: Vec<u8> = Vec::new();
     let mut file = File::open(compressed_file)?;
@@ -165,13 +159,20 @@ pub fn decompress_wav(compressed_file: &str, output_file: &str) -> Result<(), Bo
     let time_domain = fft::fft_inverse(&freq_domain);
     let mut waveform: Vec<i16> = time_domain.iter().map(|c| c.re as i16).collect();
     waveform.drain(decoded.original_size..);
-    let metadata = WaveformMetadata::new("", waveform.len(), decoded.sample_rate, 16);
+    let metadata = WaveformMetadata::new(decoded.sample_rate, 16);
     write_wav_file(output_file, waveform, &metadata)?;
     Ok(())
 }
 
-pub fn plot(waveform: Vec<f32>, freq_bins: Vec<f32>, metadata: &WaveformMetadata, file_path: &str) {
-    let waveform_legend = (0..waveform.len())
+pub fn plot(
+    waveform: Vec<f32>,
+    freq_bins: Vec<f32>,
+    metadata: &WaveformMetadata,
+    file_path: &str,
+    title: &str,
+) {
+    let sample_size = waveform.len();
+    let waveform_legend = (0..sample_size)
         .map(|x| x as f32 / metadata.sample_rate as f32)
         .collect();
     let waveform_trace = Scatter::new(waveform_legend, waveform)
@@ -181,7 +182,7 @@ pub fn plot(waveform: Vec<f32>, freq_bins: Vec<f32>, metadata: &WaveformMetadata
         .x_axis("x1")
         .y_axis("y1");
     let freq_legend = (0..freq_bins.len())
-        .map(|x| x as f32 * metadata.freq_resolution)
+        .map(|x| x as f32 * metadata.freq_resolution(sample_size))
         .collect();
     let freq_bins_trace = Scatter::new(freq_legend, freq_bins)
         .mode(Mode::Lines)
@@ -197,7 +198,7 @@ pub fn plot(waveform: Vec<f32>, freq_bins: Vec<f32>, metadata: &WaveformMetadata
                 .pattern(GridPattern::Independent)
                 .row_order(RowOrder::TopToBottom),
         )
-        .title(Title::new(&metadata.name))
+        .title(Title::new(title))
         .x_axis(Axis::new().title(Title::new("Time (seconds)")))
         .y_axis(Axis::new().title(Title::new("Amplitude")))
         .x_axis2(Axis::new().title(Title::new("Frequency (Hz)")))
