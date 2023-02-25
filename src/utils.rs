@@ -17,8 +17,10 @@ use wav::{BitDepth, Header};
 /// Returned when file formats are not supported.
 #[derive(Error, Debug)]
 pub enum FormatError {
-    #[error("multiple channels not supported - convert to mono")]
+    #[error("multiple channels not supported")]
     UnsupportedChannels,
+    #[error("unrecognized format not supported")]
+    UnsupportedFormat,
 }
 
 /// Compress a .wav file for later decompression using [`decompress_wav`].
@@ -44,6 +46,7 @@ pub fn compress_wav(
     let compressed = CompressedData::new(
         metadata.sample_rate,
         original_size,
+        metadata.bit_rate,
         frequencies,
         cutoff_zeros,
     );
@@ -66,9 +69,9 @@ pub fn decompress_wav(compressed_file: &str, output_file: &str) -> Result<(), Bo
         .collect();
     freq_domain.append(&mut vec![Complex32::default(); decoded.cutoff_zeros]);
     let time_domain = fft::fft_inverse(&freq_domain);
-    let mut waveform: Vec<i16> = time_domain.iter().map(|c| c.re as i16).collect();
+    let mut waveform: Vec<f32> = time_domain.iter().map(|c| c.re as f32).collect();
     waveform.drain(decoded.original_size..);
-    let metadata = WaveformMetadata::new(decoded.sample_rate, 16);
+    let metadata = WaveformMetadata::new(decoded.sample_rate, decoded.bit_rate);
     write_wav_file(output_file, waveform, &metadata)?;
     Ok(())
 }
@@ -114,6 +117,7 @@ impl WaveformMetadata {
 struct CompressedData {
     sample_rate: usize,
     original_size: usize,
+    bit_rate: usize,
     frequencies: Vec<(f32, f32)>,
     cutoff_zeros: usize,
 }
@@ -122,12 +126,14 @@ impl CompressedData {
     fn new(
         sample_rate: usize,
         original_size: usize,
+        bit_rate: usize,
         frequencies: Vec<(f32, f32)>,
         cutoff_zeros: usize,
     ) -> CompressedData {
         CompressedData {
             sample_rate,
             original_size,
+            bit_rate,
             frequencies,
             cutoff_zeros,
         }
@@ -145,7 +151,7 @@ fn load_wav_file(path: &str) -> Result<(WaveformMetadata, Vec<f32>), Box<dyn Err
         BitDepth::Sixteen(d) => d.iter().map(|x| x.clone() as f32).collect(),
         BitDepth::TwentyFour(d) => d.iter().map(|x| x.clone() as f32).collect(),
         BitDepth::ThirtyTwoFloat(d) => d.iter().map(|x| x.clone() as f32).collect(),
-        BitDepth::Empty => Vec::from([0.]),
+        BitDepth::Empty => return Err(Box::new(FormatError::UnsupportedFormat)),
     };
     let metadata = WaveformMetadata::new(
         header.sampling_rate as usize,
@@ -156,12 +162,18 @@ fn load_wav_file(path: &str) -> Result<(WaveformMetadata, Vec<f32>), Box<dyn Err
 
 fn write_wav_file(
     path: &str,
-    waveform: Vec<i16>,
+    waveform: Vec<f32>,
     metadata: &WaveformMetadata,
-) -> Result<(), std::io::Error> {
+) -> Result<(), Box<dyn Error>> {
     let mut out_file = File::create(Path::new(path))?;
     let header = Header::new(1, 1, metadata.sample_rate as u32, metadata.bit_rate as u16);
-    let track = BitDepth::Sixteen(waveform);
+    let track = match metadata.bit_rate {
+        8 => BitDepth::Eight(waveform.iter().map(|x| x.clone() as u8).collect()),
+        16 => BitDepth::Sixteen(waveform.iter().map(|x| x.clone() as i16).collect()),
+        24 => BitDepth::TwentyFour(waveform.iter().map(|x| x.clone() as i32).collect()),
+        32 => BitDepth::ThirtyTwoFloat(waveform),
+        _ => return Err(Box::new(FormatError::UnsupportedFormat)),
+    };
     wav::write(header, &track, &mut out_file)?;
     Ok(())
 }
