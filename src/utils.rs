@@ -20,6 +20,17 @@ pub enum FormatError {
     UnsupportedChannels,
 }
 
+pub fn analyze_waveform(wav_file: &str, output_dir: &str) -> Result<String, Box<dyn Error>> {
+    let file_path = format!("{output_dir}analysis.html");
+    let (metadata, mut waveform) = load_wav_file(wav_file)?;
+    fft::round_sample_size_up(&mut waveform);
+    let time_domain = fft::convert_sample(&waveform);
+    let freq_bins = fft::frequency_bins(&fft::fft(&time_domain));
+    println!("Writing analysis to: {file_path}");
+    plot(waveform.clone(), freq_bins, &metadata, &file_path);
+    Ok(file_path)
+}
+
 pub fn load_wav_file(path: &str) -> Result<(WaveformMetadata, Vec<f32>), Box<dyn Error>> {
     let mut inp_file = File::open(Path::new(path))?;
     let (header, data) = wav::read(&mut inp_file)?;
