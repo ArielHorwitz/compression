@@ -28,18 +28,18 @@ fn main() {
     // TODO: use crate fsio
     let (_, file) = args.file.rsplit_once("/").unwrap_or(("", &args.file));
     let (stem, suffix) = file.rsplit_once(".").unwrap();
+    if suffix != "wav" {
+        panic!("File suffix unrecognized: {file} expected .wav");
+    }
     if args.analyze {
         let analysis = utils::analyze_waveform(&args.file, &args.output_dir).unwrap();
         Command::new("xdg-open").arg(analysis).spawn().unwrap();
-    } else if suffix == "wav" {
-        let output_file = format!("{}{}.cmp", args.output_dir, stem);
-        println!("Compressing to: {output_file}");
-        utils::compress_wav(&args.file, &output_file, args.freq_cutoff).unwrap();
-    } else if suffix == "cmp" {
-        let output_file = format!("{}{}.wav", args.output_dir, stem);
-        println!("Decompressing to: {output_file}");
-        utils::decompress_wav(&args.file, &output_file).unwrap();
     } else {
-        panic!("File suffix unrecognized: {file}");
+        let compressed_output = format!("{}{}_compressed.cmp", args.output_dir, stem);
+        println!("Compressing to: {compressed_output}");
+        utils::compress_wav(&args.file, &compressed_output, args.freq_cutoff).unwrap();
+        let decompressed_output = format!("{}{}_decompressed.wav", args.output_dir, stem);
+        println!("Decompressing to: {decompressed_output}");
+        utils::decompress_wav(&compressed_output, &decompressed_output).unwrap();
     }
 }
