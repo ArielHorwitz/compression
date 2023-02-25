@@ -14,102 +14,11 @@ use std::path::Path;
 use thiserror::Error;
 use wav::{BitDepth, Header};
 
+/// Returned when file formats are not supported.
 #[derive(Error, Debug)]
 pub enum FormatError {
     #[error("multiple channels not supported - convert to mono")]
     UnsupportedChannels,
-}
-
-pub fn analyze_waveform(wav_file: &str, output_dir: &str) -> Result<String, Box<dyn Error>> {
-    let file_path = format!("{output_dir}analysis.html");
-    let (metadata, mut waveform) = load_wav_file(wav_file)?;
-    fft::round_sample_size_up(&mut waveform);
-    let time_domain = fft::convert_sample(&waveform);
-    let freq_bins = fft::frequency_bins(&fft::fft(&time_domain));
-    println!("Writing analysis to: {file_path}");
-    plot(
-        waveform.clone(),
-        freq_bins,
-        &metadata,
-        &file_path,
-        &wav_file,
-    );
-    Ok(file_path)
-}
-
-pub fn load_wav_file(path: &str) -> Result<(WaveformMetadata, Vec<f32>), Box<dyn Error>> {
-    let mut inp_file = File::open(Path::new(path))?;
-    let (header, data) = wav::read(&mut inp_file)?;
-    if header.channel_count != 1 {
-        return Err(Box::new(FormatError::UnsupportedChannels));
-    }
-    let waveform: Vec<f32> = match data {
-        BitDepth::Eight(d) => d.iter().map(|x| x.clone() as f32).collect(),
-        BitDepth::Sixteen(d) => d.iter().map(|x| x.clone() as f32).collect(),
-        BitDepth::TwentyFour(d) => d.iter().map(|x| x.clone() as f32).collect(),
-        BitDepth::ThirtyTwoFloat(d) => d.iter().map(|x| x.clone() as f32).collect(),
-        BitDepth::Empty => Vec::from([0.]),
-    };
-    let metadata = WaveformMetadata::new(
-        header.sampling_rate as usize,
-        header.bits_per_sample as usize,
-    );
-    Ok((metadata, waveform))
-}
-
-pub fn write_wav_file(
-    path: &str,
-    waveform: Vec<i16>,
-    metadata: &WaveformMetadata,
-) -> Result<(), std::io::Error> {
-    let mut out_file = File::create(Path::new(path))?;
-    let header = Header::new(1, 1, metadata.sample_rate as u32, metadata.bit_rate as u16);
-    let track = BitDepth::Sixteen(waveform);
-    wav::write(header, &track, &mut out_file)?;
-    Ok(())
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct WaveformMetadata {
-    pub sample_rate: usize,
-    pub bit_rate: usize,
-}
-
-impl WaveformMetadata {
-    pub fn new(sample_rate: usize, bit_rate: usize) -> WaveformMetadata {
-        WaveformMetadata {
-            sample_rate,
-            bit_rate,
-        }
-    }
-
-    pub fn freq_resolution(&self, sample_size: usize) -> f32 {
-        self.sample_rate as f32 / sample_size as f32
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct CompressedData {
-    sample_rate: usize,
-    original_size: usize,
-    frequencies: Vec<(f32, f32)>,
-    cutoff_zeros: usize,
-}
-
-impl CompressedData {
-    fn new(
-        sample_rate: usize,
-        original_size: usize,
-        frequencies: Vec<(f32, f32)>,
-        cutoff_zeros: usize,
-    ) -> CompressedData {
-        CompressedData {
-            sample_rate,
-            original_size,
-            frequencies,
-            cutoff_zeros,
-        }
-    }
 }
 
 /// Compress a .wav file for later decompression using [`decompress_wav`].
@@ -164,7 +73,100 @@ pub fn decompress_wav(compressed_file: &str, output_file: &str) -> Result<(), Bo
     Ok(())
 }
 
-pub fn plot(
+/// Produce an html page with interactive plots of the time domain and frequency domain.
+pub fn analyze_waveform(wav_file: &str, output_dir: &str) -> Result<String, Box<dyn Error>> {
+    let file_path = format!("{output_dir}analysis.html");
+    let (metadata, mut waveform) = load_wav_file(wav_file)?;
+    fft::round_sample_size_up(&mut waveform);
+    let time_domain = fft::convert_sample(&waveform);
+    let freq_bins = fft::frequency_bins(&fft::fft(&time_domain));
+    println!("Writing analysis to: {file_path}");
+    plot(
+        waveform.clone(),
+        freq_bins,
+        &metadata,
+        &file_path,
+        &wav_file,
+    );
+    Ok(file_path)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct WaveformMetadata {
+    pub sample_rate: usize,
+    pub bit_rate: usize,
+}
+
+impl WaveformMetadata {
+    pub fn new(sample_rate: usize, bit_rate: usize) -> WaveformMetadata {
+        WaveformMetadata {
+            sample_rate,
+            bit_rate,
+        }
+    }
+
+    pub fn freq_resolution(&self, sample_size: usize) -> f32 {
+        self.sample_rate as f32 / sample_size as f32
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct CompressedData {
+    sample_rate: usize,
+    original_size: usize,
+    frequencies: Vec<(f32, f32)>,
+    cutoff_zeros: usize,
+}
+
+impl CompressedData {
+    fn new(
+        sample_rate: usize,
+        original_size: usize,
+        frequencies: Vec<(f32, f32)>,
+        cutoff_zeros: usize,
+    ) -> CompressedData {
+        CompressedData {
+            sample_rate,
+            original_size,
+            frequencies,
+            cutoff_zeros,
+        }
+    }
+}
+
+fn load_wav_file(path: &str) -> Result<(WaveformMetadata, Vec<f32>), Box<dyn Error>> {
+    let mut inp_file = File::open(Path::new(path))?;
+    let (header, data) = wav::read(&mut inp_file)?;
+    if header.channel_count != 1 {
+        return Err(Box::new(FormatError::UnsupportedChannels));
+    }
+    let waveform: Vec<f32> = match data {
+        BitDepth::Eight(d) => d.iter().map(|x| x.clone() as f32).collect(),
+        BitDepth::Sixteen(d) => d.iter().map(|x| x.clone() as f32).collect(),
+        BitDepth::TwentyFour(d) => d.iter().map(|x| x.clone() as f32).collect(),
+        BitDepth::ThirtyTwoFloat(d) => d.iter().map(|x| x.clone() as f32).collect(),
+        BitDepth::Empty => Vec::from([0.]),
+    };
+    let metadata = WaveformMetadata::new(
+        header.sampling_rate as usize,
+        header.bits_per_sample as usize,
+    );
+    Ok((metadata, waveform))
+}
+
+fn write_wav_file(
+    path: &str,
+    waveform: Vec<i16>,
+    metadata: &WaveformMetadata,
+) -> Result<(), std::io::Error> {
+    let mut out_file = File::create(Path::new(path))?;
+    let header = Header::new(1, 1, metadata.sample_rate as u32, metadata.bit_rate as u16);
+    let track = BitDepth::Sixteen(waveform);
+    wav::write(header, &track, &mut out_file)?;
+    Ok(())
+}
+
+fn plot(
     waveform: Vec<f32>,
     freq_bins: Vec<f32>,
     metadata: &WaveformMetadata,

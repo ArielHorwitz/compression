@@ -2,10 +2,12 @@ use num_complex::Complex32;
 use rustfft::{algorithm::Dft, Fft, FftDirection};
 use std::f32::consts::PI;
 
+/// Convert a sequence of floats to complex numbers.
 pub fn convert_sample(sample: &[f32]) -> Vec<Complex32> {
     sample.iter().map(|x| Complex32::from(x.clone())).collect()
 }
 
+/// Add default values to round sample size up to 2^n.
 pub fn round_sample_size_up<T: Default + Clone>(sample: &mut Vec<T>) {
     let original_size = sample.len();
     let nearest_power2 = 2f64.powf((original_size as f64).log2().ceil()) as usize;
@@ -13,16 +15,19 @@ pub fn round_sample_size_up<T: Default + Clone>(sample: &mut Vec<T>) {
     sample.append(&mut vec![T::default(); padding]);
 }
 
+/// Removes items to round sample size down to 2^n.
 pub fn round_sample_size_down<T: Default + Clone>(sample: &mut Vec<T>) {
     let nearest_power2 = 2f64.powf((sample.len() as f64).log2().floor()) as usize;
     sample.drain(nearest_power2..);
 }
 
+/// Perform an FFT on a sample of complex numbers.
 pub fn fft(samples: &Vec<Complex32>) -> Vec<Complex32> {
     assert_sample_size(&samples);
     fft_recursive(samples.clone(), 1.)
 }
 
+/// Perform an inverse FFT on a sample of complex numbers.
 pub fn fft_inverse(samples: &Vec<Complex32>) -> Vec<Complex32> {
     assert_sample_size(&samples);
     let sample_size = samples.len() as f32;
@@ -32,6 +37,7 @@ pub fn fft_inverse(samples: &Vec<Complex32>) -> Vec<Complex32> {
         .collect()
 }
 
+/// Returns the amplitudes of the discernable frequencies in bins (by the frequency resolution).
 pub fn frequency_bins(sample: &[Complex32]) -> Vec<f32> {
     let sample_size = sample.len() as f32;
     let alias_index = (sample_size / 2.) as usize;
