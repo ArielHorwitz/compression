@@ -9,15 +9,12 @@ struct Args {
     /// File to compress / decompress / analyze
     #[arg(short, long)]
     file: String,
-
     /// Frequency cutoff (when compressing)
     #[arg(short = 'c', long, default_value_t = 3000)]
     freq_cutoff: usize,
-
     /// Analyze frequencies
     #[arg(short, long, default_value_t = false)]
     analyze: bool,
-
     /// Output file
     #[arg(short, long, default_value_t = String::from("./"))]
     output_dir: String,
@@ -25,9 +22,8 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    // TODO: use crate fsio
     let (_, file) = args.file.rsplit_once("/").unwrap_or(("", &args.file));
-    let (stem, suffix) = file.rsplit_once(".").unwrap();
+    let (stem, suffix) = file.rsplit_once(".").unwrap_or((file, ""));
     if suffix != "wav" {
         panic!("File suffix unrecognized: {file} expected .wav");
     }
