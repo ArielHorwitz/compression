@@ -6,16 +6,16 @@ use std::process::Command;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// File to compress / decompress / analyze
+    /// WAV file
     #[arg(short, long)]
     file: String,
-    /// Frequency cutoff (when compressing)
-    #[arg(short = 'c', long, default_value_t = 3000)]
-    freq_cutoff: usize,
     /// Analyze frequencies
     #[arg(short, long, default_value_t = false)]
     analyze: bool,
-    /// Output file
+    /// Frequency cutoff (when compressing)
+    #[arg(short = 'c', long, default_value_t = 3000)]
+    freq_cutoff: usize,
+    /// Output folder
     #[arg(short, long, default_value_t = String::from("./"))]
     output_dir: String,
 }
