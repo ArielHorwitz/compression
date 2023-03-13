@@ -1,6 +1,6 @@
 /// Proof of concept for compressing and decompressing media files.
 use clap::Parser;
-use compression::utils;
+use compression::wav;
 use std::process::Command;
 
 #[derive(Parser, Debug)]
@@ -28,14 +28,14 @@ fn main() {
         panic!("File suffix unrecognized: {file} expected .wav");
     }
     if args.analyze {
-        let analysis = utils::analyze_waveform(&args.file, &args.output_dir).unwrap();
+        let analysis = wav::analyze_waveform(&args.file, &args.output_dir).unwrap();
         Command::new("xdg-open").arg(analysis).spawn().unwrap();
     } else {
         let compressed_output = format!("{}{}_compressed.cmp", args.output_dir, stem);
         println!("Compressing to: {compressed_output}");
-        utils::compress_wav(&args.file, &compressed_output, args.freq_cutoff).unwrap();
+        wav::compress_wav(&args.file, &compressed_output, args.freq_cutoff).unwrap();
         let decompressed_output = format!("{}{}_decompressed.wav", args.output_dir, stem);
         println!("Decompressing to: {decompressed_output}");
-        utils::decompress_wav(&compressed_output, &decompressed_output).unwrap();
+        wav::decompress_wav(&compressed_output, &decompressed_output).unwrap();
     }
 }
