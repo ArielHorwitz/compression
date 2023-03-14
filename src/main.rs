@@ -16,7 +16,7 @@ struct Args {
     #[arg(short, long, default_value_t = false)]
     analyze: bool,
     /// Output file
-    #[arg(short, long, default_value_t = String::from("./"))]
+    #[arg(short, long, default_value_t = String::from("./data/"))]
     output_dir: String,
 }
 
