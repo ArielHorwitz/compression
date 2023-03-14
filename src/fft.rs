@@ -21,6 +21,25 @@ pub fn round_sample_size_down<T: Default + Clone>(sample: &mut Vec<T>) {
     sample.drain(nearest_power2..);
 }
 
+/// Perform a 2D FFT on a 2D sample of complex numbers (horizontal then vertical).
+pub fn fft_2d(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex32>> {
+    fft_2d_vertical(&fft_2d_horizontal(samples))
+}
+
+pub fn fft_2d_horizontal(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex32>> {
+    samples.iter().map(|row| fft(row)).collect()
+}
+
+pub fn fft_2d_vertical(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex32>> {
+    let (width, height) = (samples.len(), samples[0].len());
+    (0..width)
+        .map(|x| {
+            let column = (0..height).map(|y| samples[y][x]).collect();
+            fft(&column)
+        })
+        .collect()
+}
+
 /// Perform an FFT on a sample of complex numbers.
 pub fn fft(samples: &Vec<Complex32>) -> Vec<Complex32> {
     assert_sample_size(&samples);
