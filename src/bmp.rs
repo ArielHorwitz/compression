@@ -119,7 +119,7 @@ fn image_to_bitmap(image: ComplexImage, filepath: &str) {
     bmp_image.save(filepath).unwrap();
 }
 
-fn image_to_trace(image: &ComplexImage, log_factor: f32) -> Box<Image> {
+fn image_to_trace(image: &ComplexImage, log_factor: f32, shift: bool) -> Box<Image> {
     // Assumes image is properly formed
     let (width, height) = (image.red.len(), image.red[0].len());
     let mut converted_image = Vec::with_capacity(width);
@@ -135,7 +135,7 @@ fn image_to_trace(image: &ComplexImage, log_factor: f32) -> Box<Image> {
         }
         converted_image.push(column);
     }
-    let normalized_image: Vec<Vec<Rgb>> = converted_image
+    let mut normalized_image: Vec<Vec<Rgb>> = converted_image
         .iter()
         .map(|y| {
             y.iter()
@@ -150,6 +150,20 @@ fn image_to_trace(image: &ComplexImage, log_factor: f32) -> Box<Image> {
                 .collect()
         })
         .collect();
+    if shift == true {
+        let (half_width, half_height) = (width / 2, height / 2);
+        let mut x2;
+        let mut y2;
+        for x in 0..half_width {
+            x2 = x + half_width;
+            for y in 0..half_height {
+                y2 = y + half_height;
+                normalized_image[x].swap(y, y2);
+                normalized_image[x2].swap(y, y2);
+            }
+            normalized_image.swap(x, x2);
+        }
+    }
     Image::new(normalized_image).color_model(ColorModel::RGB)
 }
 
@@ -175,25 +189,25 @@ fn plot(
     let mut plot = Plot::new();
     plot.set_layout(layout);
     plot.add_trace(
-        image_to_trace(image, 1.)
+        image_to_trace(image, 1., false)
             .name("Color domain")
             .x_axis("x1")
             .y_axis("y1"),
     );
     plot.add_trace(
-        image_to_trace(transformed, log_factor)
+        image_to_trace(transformed, log_factor, true)
             .name("Frequency domain")
             .x_axis("x2")
             .y_axis("y2"),
     );
     plot.add_trace(
-        image_to_trace(horizontal, log_factor)
+        image_to_trace(horizontal, log_factor, true)
             .name("Horizontal frequency domain")
             .x_axis("x3")
             .y_axis("y3"),
     );
     plot.add_trace(
-        image_to_trace(vertical, log_factor)
+        image_to_trace(vertical, log_factor, true)
             .name("Vertical frequency domain")
             .x_axis("x4")
             .y_axis("y4"),
