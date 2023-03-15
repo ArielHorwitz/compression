@@ -26,17 +26,36 @@ pub fn fft_2d(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex32>> {
     fft_2d_vertical(&fft_2d_horizontal(samples))
 }
 
+/// Perform an inverse 2D FFT on a 2D sample of complex numbers (vertical then horizontal).
+pub fn fft_2d_inverse(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex32>> {
+    fft_2d_horizontal_inverse(&fft_2d_vertical_inverse(samples))
+}
+
 pub fn fft_2d_horizontal(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex32>> {
-    samples.iter().map(|row| fft(row)).collect()
+    samples.iter().map(|y| fft(y)).collect()
+}
+
+pub fn fft_2d_horizontal_inverse(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex32>> {
+    samples.iter().map(|y| fft_inverse(y)).collect()
 }
 
 pub fn fft_2d_vertical(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex32>> {
-    let (width, height) = (samples.len(), samples[0].len());
-    (0..width)
-        .map(|x| {
-            let column = (0..height).map(|y| samples[y][x]).collect();
-            fft(&column)
-        })
+    let (height, width) = (samples.len(), samples[0].len());
+    let transposed: Vec<Vec<Complex32>> = (0..width)
+        .map(|x| fft(&(0..height).map(|y| samples[y][x]).collect()))
+        .collect();
+    (0..height)
+        .map(|y| (0..width).map(|x| transposed[x][y]).collect())
+        .collect()
+}
+
+pub fn fft_2d_vertical_inverse(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex32>> {
+    let (height, width) = (samples.len(), samples[0].len());
+    let transposed: Vec<Vec<Complex32>> = (0..width)
+        .map(|x| fft_inverse(&(0..height).map(|y| samples[y][x]).collect()))
+        .collect();
+    (0..height)
+        .map(|y| (0..width).map(|x| transposed[x][y]).collect())
         .collect()
 }
 

@@ -1,4 +1,7 @@
-use crate::fft::{fft_2d_horizontal, fft_2d_vertical};
+use crate::fft::{
+    fft_2d, fft_2d_horizontal, fft_2d_horizontal_inverse, fft_2d_inverse, fft_2d_vertical,
+    fft_2d_vertical_inverse,
+};
 use bmp;
 use num_complex::Complex32;
 use plotly::{
@@ -28,19 +31,42 @@ pub fn analyze_image(filepath: &str, log_factor: f32, output_dir: &str) -> Strin
         green: fft_2d_vertical(&image.green),
         blue: fft_2d_vertical(&image.blue),
     };
-    let full = ComplexImage {
-        red: fft_2d_vertical(&horizontal.red),
-        green: fft_2d_vertical(&horizontal.green),
-        blue: fft_2d_vertical(&horizontal.blue),
+    let transformed = ComplexImage {
+        red: fft_2d(&image.red),
+        green: fft_2d(&image.green),
+        blue: fft_2d(&image.blue),
     };
     let output_path = format!("{output_dir}analysis.html");
     plot(
         &image,
-        &horizontal,
         &vertical,
-        &full,
+        &horizontal,
+        &transformed,
         log_factor,
         &output_path,
+    );
+    let inverse_horizontal = ComplexImage {
+        red: fft_2d_horizontal_inverse(&transformed.red),
+        green: fft_2d_horizontal_inverse(&transformed.green),
+        blue: fft_2d_horizontal_inverse(&transformed.blue),
+    };
+    let inverse_vertical = ComplexImage {
+        red: fft_2d_vertical_inverse(&transformed.red),
+        green: fft_2d_vertical_inverse(&transformed.green),
+        blue: fft_2d_vertical_inverse(&transformed.blue),
+    };
+    let inverse_transformed_image = ComplexImage {
+        red: fft_2d_inverse(&transformed.red),
+        green: fft_2d_inverse(&transformed.green),
+        blue: fft_2d_inverse(&transformed.blue),
+    };
+    plot(
+        &inverse_transformed_image,
+        &inverse_vertical,
+        &inverse_horizontal,
+        &transformed,
+        log_factor,
+        &format!("{output_dir}analysis_inverse.html"),
     );
     output_path
 }
@@ -50,22 +76,22 @@ fn bitmap_to_image(filepath: &str) -> ComplexImage {
     println!("bmp: {:?}", bmp_data);
     let width = bmp_data.get_width() as usize;
     let height = bmp_data.get_height() as usize;
-    let mut red = Vec::with_capacity(width);
-    let mut green = Vec::with_capacity(width);
-    let mut blue = Vec::with_capacity(width);
-    for x in 0..width {
-        let mut r_column = Vec::with_capacity(height);
-        let mut g_column = Vec::with_capacity(height);
-        let mut b_column = Vec::with_capacity(height);
-        for y in 0..height {
-            let pix = bmp_data.get_pixel(y as u32, x as u32);
-            r_column.push(Complex32::from(pix.r as f32));
-            g_column.push(Complex32::from(pix.g as f32));
-            b_column.push(Complex32::from(pix.b as f32));
+    let mut red = Vec::with_capacity(height);
+    let mut green = Vec::with_capacity(height);
+    let mut blue = Vec::with_capacity(height);
+    for y in 0..height {
+        let mut r_row = Vec::with_capacity(width);
+        let mut g_row = Vec::with_capacity(width);
+        let mut b_row = Vec::with_capacity(width);
+        for x in 0..width {
+            let pix = bmp_data.get_pixel(x as u32, y as u32);
+            r_row.push(Complex32::from(pix.r as f32));
+            g_row.push(Complex32::from(pix.g as f32));
+            b_row.push(Complex32::from(pix.b as f32));
         }
-        red.push(r_column);
-        green.push(g_column);
-        blue.push(b_column);
+        red.push(r_row);
+        green.push(g_row);
+        blue.push(b_row);
     }
     ComplexImage { red, green, blue }
 }
@@ -75,12 +101,12 @@ fn image_to_trace(image: &ComplexImage, log_factor: f32) -> Box<Image> {
     let (width, height) = (image.red.len(), image.red[0].len());
     let mut converted_image = Vec::with_capacity(width);
     let mut max_value = 0.;
-    for x in 0..width {
+    for y in 0..width {
         let mut column = Vec::with_capacity(height);
-        for y in 0..height {
-            let r = image.red[x][y].norm();
-            let g = image.green[x][y].norm();
-            let b = image.blue[x][y].norm();
+        for x in 0..height {
+            let r = image.red[y][x].norm();
+            let g = image.green[y][x].norm();
+            let b = image.blue[y][x].norm();
             column.push((r, g, b));
             max_value = f32::max(f32::max(f32::max(max_value, r), g), b);
         }
@@ -88,8 +114,8 @@ fn image_to_trace(image: &ComplexImage, log_factor: f32) -> Box<Image> {
     }
     let normalized_image: Vec<Vec<Rgb>> = converted_image
         .iter()
-        .map(|row| {
-            row.iter()
+        .map(|y| {
+            y.iter()
                 .map(|pixel| {
                     let (r, g, b) = pixel;
                     Rgb::new(
