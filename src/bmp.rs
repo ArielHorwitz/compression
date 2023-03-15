@@ -68,6 +68,10 @@ pub fn analyze_image(filepath: &str, log_factor: f32, output_dir: &str) -> Strin
         log_factor,
         &format!("{output_dir}analysis_inverse.html"),
     );
+    image_to_bitmap(
+        inverse_transformed_image,
+        &format!("{output_dir}detransformed_image.bmp"),
+    );
     output_path
 }
 
@@ -94,6 +98,25 @@ fn bitmap_to_image(filepath: &str) -> ComplexImage {
         blue.push(b_row);
     }
     ComplexImage { red, green, blue }
+}
+
+fn image_to_bitmap(image: ComplexImage, filepath: &str) {
+    let (width, height) = (image.red[0].len(), image.red.len());
+    let mut bmp_image = bmp::Image::new(width as u32, height as u32);
+    for y in 0..height {
+        for x in 0..width {
+            bmp_image.set_pixel(
+                x as u32,
+                y as u32,
+                bmp::Pixel::new(
+                    (image.red[y][x].norm()) as u8,
+                    (image.green[y][x].norm()) as u8,
+                    (image.blue[y][x].norm()) as u8,
+                ),
+            );
+        }
+    }
+    bmp_image.save(filepath).unwrap();
 }
 
 fn image_to_trace(image: &ComplexImage, log_factor: f32) -> Box<Image> {
