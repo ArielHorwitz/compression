@@ -6,9 +6,12 @@ use std::process::Command;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// File to compress / decompress / analyze
+    /// Input file
     #[arg(short, long)]
     file: String,
+    /// Compression level (when compressing)
+    #[arg(short = 'p', long, default_value_t = 3.)]
+    compression_level: f32,
     /// Frequency cutoff (when compressing)
     #[arg(short = 'c', long, default_value_t = 3000)]
     freq_cutoff: usize,
@@ -43,10 +46,12 @@ fn main() {
         }
         "bmp" => {
             if args.analyze {
-                let analysis = bmp::analyze_image(&args.file, args.log_factor, &args.output_dir);
-                Command::new("xdg-open").arg(analysis).spawn().unwrap();
+                bmp::analyze_image(&args.file, args.log_factor, &args.output_dir, true);
             } else {
-                bmp::compress_bmp(&args.file, &args.output_dir, 3)
+                let compressed_output = format!("{}{}_compressed.cmp", args.output_dir, stem);
+                let decompressed_output = format!("{}{}_decompressed.bmp", args.output_dir, stem);
+                bmp::compress_bmp(&args.file, &compressed_output, args.compression_level);
+                bmp::decompress_bmp(&compressed_output, &decompressed_output);
             }
         }
         _ => panic!("File suffix unrecognized: {file} expected .wav or .bmp"),
