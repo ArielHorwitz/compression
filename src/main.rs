@@ -45,6 +45,8 @@ fn main() {
             if args.analyze {
                 let analysis = bmp::analyze_image(&args.file, args.log_factor, &args.output_dir);
                 Command::new("xdg-open").arg(analysis).spawn().unwrap();
+            } else {
+                bmp::compress_bmp(&args.file, &args.output_dir, 3)
             }
         }
         _ => panic!("File suffix unrecognized: {file} expected .wav or .bmp"),
