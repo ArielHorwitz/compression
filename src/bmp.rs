@@ -10,10 +10,13 @@ use plotly::{
     Image, Layout, Plot,
 };
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Write};
-use std::{fs::File, process::Command};
+use std::fs::File;
+use std::{
+    io::{Read, Write},
+    path::PathBuf,
+};
 
-pub fn analyze_image(filepath: &str, log_factor: f32, output_dir: &str, auto_open: bool) {
+pub fn analyze_image(filepath: &PathBuf, log_factor: f32, output_dir: &PathBuf) -> PathBuf {
     let image = bitmap_to_image(filepath);
     let horizontal = ComplexImage::new(
         fft_2d_horizontal(&image.red),
@@ -38,7 +41,7 @@ pub fn analyze_image(filepath: &str, log_factor: f32, output_dir: &str, auto_ope
                 .rows(1)
                 .pattern(GridPattern::Independent),
         )
-        .title(Title::new(filepath))
+        .title(Title::new(&filepath.to_string_lossy()))
         .width(1900)
         .height(900);
     let mut plot = Plot::new();
@@ -68,15 +71,16 @@ pub fn analyze_image(filepath: &str, log_factor: f32, output_dir: &str, auto_ope
             .y_axis("y4"),
     );
     // Write to file
-    let output_path = format!("{output_dir}analysis.html");
+    let output_path = output_dir.join("analysis.html");
     plot.write_html(&output_path);
-    if auto_open {
-        Command::new("xdg-open").arg(output_path).spawn().unwrap();
-    }
+    output_path
 }
 
-pub fn compress_bmp(bmp_file: &str, compressed_file: &str, compression_level: f32) {
-    println!("Compressing {bmp_file} at level {compression_level}... ");
+pub fn compress_bmp(bmp_file: &PathBuf, compressed_file: &PathBuf, compression_level: f32) {
+    println!(
+        "Compressing {:?} at level {:?}... ",
+        bmp_file, compression_level
+    );
     let original_image = bitmap_to_image(&bmp_file);
     println!("Transforming... ");
     let mut transformed_image = ComplexImage::new(
@@ -90,11 +94,11 @@ pub fn compress_bmp(bmp_file: &str, compressed_file: &str, compression_level: f3
     let encoded = bincode::serialize(&compressed).unwrap();
     let mut file = File::create(compressed_file).unwrap();
     file.write_all(&encoded).unwrap();
-    println!("Compressed to: {compressed_file}");
+    println!("Compressed to: {:?}", compressed_file);
 }
 
-pub fn decompress_bmp(compressed_file: &str, output_file: &str) {
-    println!("Decompressing {compressed_file}... ");
+pub fn decompress_bmp(compressed_file: &PathBuf, output_file: &PathBuf) {
+    println!("Decompressing {:?}... ", compressed_file);
     let mut encoded: Vec<u8> = Vec::new();
     let mut file = File::open(compressed_file).unwrap();
     file.read_to_end(&mut encoded).unwrap();
@@ -109,7 +113,7 @@ pub fn decompress_bmp(compressed_file: &str, output_file: &str) {
         fft_2d_inverse(&transformed_image.blue),
     );
     image_to_bitmap(&restored_image, output_file);
-    println!("Decompressed to: {output_file}");
+    println!("Decompressed to: {:?}", output_file);
 }
 
 struct ComplexImage {
@@ -205,7 +209,7 @@ impl SerializableComplexImage {
     }
 }
 
-fn bitmap_to_image(filepath: &str) -> ComplexImage {
+fn bitmap_to_image(filepath: &PathBuf) -> ComplexImage {
     let bmp_data = bmp::open(filepath).unwrap();
     let width = bmp_data.get_width() as usize;
     let height = bmp_data.get_height() as usize;
@@ -229,7 +233,7 @@ fn bitmap_to_image(filepath: &str) -> ComplexImage {
     ComplexImage::new(red, green, blue)
 }
 
-fn image_to_bitmap(image: &ComplexImage, filepath: &str) {
+fn image_to_bitmap(image: &ComplexImage, filepath: &PathBuf) {
     let (width, height) = (image.red[0].len(), image.red.len());
     let mut bmp_image = bmp::Image::new(width as u32, height as u32);
     for y in 0..height {

@@ -2,6 +2,7 @@
 use clap::Parser;
 use compression::{bmp, wav};
 use std::cmp::Ordering;
+use std::path::PathBuf;
 use std::process::Command;
 
 #[derive(Parser, Debug)]
@@ -20,18 +21,31 @@ struct Args {
     #[arg(short = 'l', long, default_value_t = 5.)]
     log_factor: f32,
     /// Output directory
-    #[arg(short, long, default_value_t = String::from("./data/"))]
+    #[arg(short, long, default_value_t = String::from("data"))]
     output_dir: String,
 }
 
 fn main() {
     let args = Args::parse();
-    let (_, file) = args.file.rsplit_once("/").unwrap_or(("", &args.file));
-    let (stem, suffix) = file.rsplit_once(".").unwrap_or((file, ""));
-    match suffix {
+    let file = PathBuf::from(args.file);
+    if !file.is_file() {
+        panic!("Not a file.")
+    }
+    let stem = file
+        .file_stem()
+        .expect("cannot get file stem")
+        .to_string_lossy()
+        .to_string();
+    let suffix = file
+        .extension()
+        .expect("cannot get file suffix")
+        .to_string_lossy()
+        .to_string();
+    let output_dir = PathBuf::from(args.output_dir);
+    match suffix.as_str() {
         "wav" => {
             if args.analyze {
-                let analysis = wav::analyze_waveform(&args.file, &args.output_dir).unwrap();
+                let analysis = wav::analyze_waveform(&file, &output_dir).unwrap();
                 Command::new("xdg-open").arg(analysis).spawn().unwrap();
             } else {
                 let compression_level = match args.compression.partial_cmp(&1.).expect(&format!(
@@ -42,18 +56,19 @@ fn main() {
                     _ => 1.,
                 };
                 let freq_cutoff = (22050. / compression_level).ceil() as usize;
-                let compressed_output = format!("{}{}_compressed.cmp", args.output_dir, stem);
-                println!("Compressing to: {compressed_output}");
-                wav::compress_wav(&args.file, &compressed_output, freq_cutoff).unwrap();
-                let decompressed_output = format!("{}{}_decompressed.wav", args.output_dir, stem);
-                println!("Decompressing to: {decompressed_output}");
+                let compressed_output = output_dir.join(format!("{stem}_compressed.cmp"));
+                println!("Compressing to: {:?}", compressed_output);
+                wav::compress_wav(&file, &compressed_output, freq_cutoff).unwrap();
+                let decompressed_output = output_dir.join(format!("{stem}_decompressed.wav"));
+                println!("Decompressing to: {:?}", decompressed_output);
                 wav::decompress_wav(&compressed_output, &decompressed_output).unwrap();
             }
         }
         "bmp" => {
             if args.analyze {
                 let log_factor = 1. / args.log_factor;
-                bmp::analyze_image(&args.file, log_factor, &args.output_dir, true);
+                let analysis = bmp::analyze_image(&file, log_factor, &output_dir);
+                Command::new("xdg-open").arg(analysis).spawn().unwrap();
             } else {
                 let compression_level = match args.compression.partial_cmp(&0.).expect(&format!(
                     "expected a number for compression level, got: {}",
@@ -62,12 +77,12 @@ fn main() {
                     Ordering::Greater => args.compression,
                     _ => 0.01,
                 };
-                let compressed_output = format!("{}{}_compressed.cmp", args.output_dir, stem);
-                let decompressed_output = format!("{}{}_decompressed.bmp", args.output_dir, stem);
-                bmp::compress_bmp(&args.file, &compressed_output, compression_level);
+                let compressed_output = output_dir.join(format!("{stem}_compressed.cmp"));
+                let decompressed_output = output_dir.join(format!("{stem}_decompressed.bmp"));
+                bmp::compress_bmp(&file, &compressed_output, compression_level);
                 bmp::decompress_bmp(&compressed_output, &decompressed_output);
             }
         }
-        _ => panic!("File suffix unrecognized: {file} expected .wav or .bmp"),
+        _ => panic!("file suffix unrecognized: expected .wav or .bmp"),
     }
 }
