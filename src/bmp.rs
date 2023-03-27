@@ -124,7 +124,7 @@ pub fn decompress_bmp(
         fft_2d_inverse(&transformed_image.green),
         fft_2d_inverse(&transformed_image.blue),
     );
-    image_to_bitmap(&restored_image, output_file);
+    image_to_bitmap(&restored_image, output_file)?;
     println!("Decompressed to: {:?}", output_file);
     Ok(())
 }
