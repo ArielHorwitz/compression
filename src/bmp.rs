@@ -10,14 +10,18 @@ use plotly::{
     Image, Layout, Plot,
 };
 use serde::{Deserialize, Serialize};
-use std::fs::File;
+use std::{error::Error, fs::File};
 use std::{
     io::{Read, Write},
     path::PathBuf,
 };
 
-pub fn analyze_image(filepath: &PathBuf, log_factor: f32, output_dir: &PathBuf) -> PathBuf {
-    let image = bitmap_to_image(filepath);
+pub fn analyze_image(
+    filepath: &PathBuf,
+    log_factor: f32,
+    output_dir: &PathBuf,
+) -> Result<PathBuf, Box<dyn Error>> {
+    let image = bitmap_to_image(filepath)?;
     let horizontal = ComplexImage::new(
         fft_2d_horizontal(&image.red),
         fft_2d_horizontal(&image.green),
@@ -73,15 +77,19 @@ pub fn analyze_image(filepath: &PathBuf, log_factor: f32, output_dir: &PathBuf) 
     // Write to file
     let output_path = output_dir.join("analysis.html");
     plot.write_html(&output_path);
-    output_path
+    Ok(output_path)
 }
 
-pub fn compress_bmp(bmp_file: &PathBuf, compressed_file: &PathBuf, compression_level: f32) {
+pub fn compress_bmp(
+    bmp_file: &PathBuf,
+    compressed_file: &PathBuf,
+    compression_level: f32,
+) -> Result<(), Box<dyn Error>> {
     println!(
         "Compressing {:?} at level {:?}... ",
         bmp_file, compression_level
     );
-    let original_image = bitmap_to_image(&bmp_file);
+    let original_image = bitmap_to_image(&bmp_file)?;
     println!("Transforming... ");
     let mut transformed_image = ComplexImage::new(
         fft_2d(&original_image.red),
@@ -91,18 +99,22 @@ pub fn compress_bmp(bmp_file: &PathBuf, compressed_file: &PathBuf, compression_l
     println!("Compressing... ");
     cut_image(&mut transformed_image, compression_level);
     let compressed = SerializableComplexImage::from_image(&transformed_image);
-    let encoded = bincode::serialize(&compressed).unwrap();
-    let mut file = File::create(compressed_file).unwrap();
-    file.write_all(&encoded).unwrap();
+    let encoded = bincode::serialize(&compressed)?;
+    let mut file = File::create(compressed_file)?;
+    file.write_all(&encoded)?;
     println!("Compressed to: {:?}", compressed_file);
+    Ok(())
 }
 
-pub fn decompress_bmp(compressed_file: &PathBuf, output_file: &PathBuf) {
+pub fn decompress_bmp(
+    compressed_file: &PathBuf,
+    output_file: &PathBuf,
+) -> Result<(), Box<dyn Error>> {
     println!("Decompressing {:?}... ", compressed_file);
     let mut encoded: Vec<u8> = Vec::new();
-    let mut file = File::open(compressed_file).unwrap();
-    file.read_to_end(&mut encoded).unwrap();
-    let decoded: SerializableComplexImage = bincode::deserialize(&encoded).unwrap();
+    let mut file = File::open(compressed_file)?;
+    file.read_to_end(&mut encoded)?;
+    let decoded: SerializableComplexImage = bincode::deserialize(&encoded)?;
     let mut transformed_image = decoded.to_image();
     println!("Decompressing... ");
     restore_image(&mut transformed_image);
@@ -114,6 +126,7 @@ pub fn decompress_bmp(compressed_file: &PathBuf, output_file: &PathBuf) {
     );
     image_to_bitmap(&restored_image, output_file);
     println!("Decompressed to: {:?}", output_file);
+    Ok(())
 }
 
 struct ComplexImage {
@@ -209,8 +222,8 @@ impl SerializableComplexImage {
     }
 }
 
-fn bitmap_to_image(filepath: &PathBuf) -> ComplexImage {
-    let bmp_data = bmp::open(filepath).unwrap();
+fn bitmap_to_image(filepath: &PathBuf) -> Result<ComplexImage, Box<dyn Error>> {
+    let bmp_data = bmp::open(filepath)?;
     let width = bmp_data.get_width() as usize;
     let height = bmp_data.get_height() as usize;
     let mut red = Vec::with_capacity(height);
@@ -230,10 +243,10 @@ fn bitmap_to_image(filepath: &PathBuf) -> ComplexImage {
         green.push(g_row);
         blue.push(b_row);
     }
-    ComplexImage::new(red, green, blue)
+    Ok(ComplexImage::new(red, green, blue))
 }
 
-fn image_to_bitmap(image: &ComplexImage, filepath: &PathBuf) {
+fn image_to_bitmap(image: &ComplexImage, filepath: &PathBuf) -> Result<(), Box<dyn Error>> {
     let (width, height) = (image.red[0].len(), image.red.len());
     let mut bmp_image = bmp::Image::new(width as u32, height as u32);
     for y in 0..height {
@@ -249,7 +262,8 @@ fn image_to_bitmap(image: &ComplexImage, filepath: &PathBuf) {
             );
         }
     }
-    bmp_image.save(filepath).unwrap();
+    bmp_image.save(filepath)?;
+    Ok(())
 }
 
 fn shift_image(image: &mut ComplexImage) {
