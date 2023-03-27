@@ -7,10 +7,10 @@ use plotly::{
     Layout, Plot, Scatter,
 };
 use serde::{Deserialize, Serialize};
-use std::error::Error;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
+use std::{error::Error, path::PathBuf};
 use thiserror::Error;
 use wav::{BitDepth, Header};
 
@@ -28,8 +28,8 @@ pub enum FormatError {
 /// The frequency cutoff is the highest frequency to maintain: lower = smaller compressed size,
 /// higher = better quality.
 pub fn compress_wav(
-    wav_file: &str,
-    output_file: &str,
+    wav_file: &PathBuf,
+    output_file: &PathBuf,
     freq_cutoff: usize,
 ) -> Result<(), Box<dyn Error>> {
     let (metadata, mut waveform) = load_wav_file(&wav_file)?;
@@ -57,7 +57,10 @@ pub fn compress_wav(
 }
 
 /// Decompress a .wav file from [`compress_wav`].
-pub fn decompress_wav(compressed_file: &str, output_file: &str) -> Result<(), Box<dyn Error>> {
+pub fn decompress_wav(
+    compressed_file: &PathBuf,
+    output_file: &PathBuf,
+) -> Result<(), Box<dyn Error>> {
     let mut encoded: Vec<u8> = Vec::new();
     let mut file = File::open(compressed_file)?;
     file.read_to_end(&mut encoded)?;
@@ -77,19 +80,22 @@ pub fn decompress_wav(compressed_file: &str, output_file: &str) -> Result<(), Bo
 }
 
 /// Produce an html page with interactive plots of the time domain and frequency domain.
-pub fn analyze_waveform(wav_file: &str, output_dir: &str) -> Result<String, Box<dyn Error>> {
-    let file_path = format!("{output_dir}analysis.html");
-    let (metadata, mut waveform) = load_wav_file(wav_file)?;
+pub fn analyze_waveform(
+    wav_file: &PathBuf,
+    output_dir: &PathBuf,
+) -> Result<PathBuf, Box<dyn Error>> {
+    let file_path = output_dir.join("analysis.html");
+    let (metadata, mut waveform) = load_wav_file(&wav_file)?;
     fft::round_sample_size_up(&mut waveform);
     let time_domain = fft::convert_sample(&waveform);
     let freq_bins = fft::frequency_bins(&fft::fft(&time_domain));
-    println!("Writing analysis to: {file_path}");
+    println!("Writing analysis to: {:?}", file_path);
     plot(
         waveform.clone(),
         freq_bins,
         &metadata,
         &file_path,
-        &wav_file,
+        &wav_file.as_path().to_string_lossy().to_string(),
     );
     Ok(file_path)
 }
@@ -140,7 +146,7 @@ impl CompressedData {
     }
 }
 
-fn load_wav_file(path: &str) -> Result<(WaveformMetadata, Vec<f32>), Box<dyn Error>> {
+fn load_wav_file(path: &PathBuf) -> Result<(WaveformMetadata, Vec<f32>), Box<dyn Error>> {
     let mut inp_file = File::open(Path::new(path))?;
     let (header, data) = wav::read(&mut inp_file)?;
     if header.channel_count != 1 {
@@ -161,7 +167,7 @@ fn load_wav_file(path: &str) -> Result<(WaveformMetadata, Vec<f32>), Box<dyn Err
 }
 
 fn write_wav_file(
-    path: &str,
+    path: &PathBuf,
     waveform: Vec<f32>,
     metadata: &WaveformMetadata,
 ) -> Result<(), Box<dyn Error>> {
@@ -182,7 +188,7 @@ fn plot(
     waveform: Vec<f32>,
     freq_bins: Vec<f32>,
     metadata: &WaveformMetadata,
-    file_path: &str,
+    file_path: &PathBuf,
     title: &str,
 ) {
     let sample_size = waveform.len();
