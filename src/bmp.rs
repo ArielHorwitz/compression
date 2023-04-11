@@ -10,18 +10,75 @@ use plotly::{
     Image, Layout, Plot,
 };
 use serde::{Deserialize, Serialize};
-use std::{error::Error, fs::File};
+use std::{fmt::Debug, fs::File};
 use std::{
     io::{Read, Write},
     path::PathBuf,
 };
 
+pub fn compress_bmp(
+    bmp_file: &PathBuf,
+    compressed_file: &PathBuf,
+    compression_level: f32,
+) -> Result<(), BoxedError> {
+    println!("Compressing {bmp_file:?} at level {compression_level:?}... ",);
+    let original_image = ComplexImage::from_bitmap(&bmp_file)?;
+    println!("Transforming... ");
+    let transformed_image = ComplexImage::new(
+        fft_2d(&original_image.red),
+        fft_2d(&original_image.green),
+        fft_2d(&original_image.blue),
+    );
+    println!("Compressing... ");
+    let new_width = (transformed_image.width() as f32 / compression_level) as usize;
+    let new_height = (transformed_image.height() as f32 / compression_level) as usize;
+    let compressed_image = &transformed_image
+        .corners(new_width, new_height)
+        .map_err(|_| "compression must be no smaller than 1")?;
+    let compressed_data = CompressedData::new(
+        convert_complex_to_raw(&compressed_image.red),
+        convert_complex_to_raw(&compressed_image.green),
+        convert_complex_to_raw(&compressed_image.blue),
+        transformed_image.size(),
+        original_image.size(),
+    );
+    let encoded = bincode::serialize(&compressed_data)?;
+    let mut file = File::create(compressed_file)?;
+    file.write_all(&encoded)?;
+    println!("Compressed to: {compressed_file:?}");
+    Ok(())
+}
+
+pub fn decompress_bmp(compressed_file: &PathBuf, output_file: &PathBuf) -> Result<(), BoxedError> {
+    println!("Decompressing {compressed_file:?}... ");
+    let mut encoded: Vec<u8> = Vec::new();
+    let mut file = File::open(compressed_file)?;
+    file.read_to_end(&mut encoded)?;
+    let compressed_data: CompressedData = bincode::deserialize(&encoded)?;
+    let compressed_image = ComplexImage::new(
+        convert_raw_to_complex(&compressed_data.red),
+        convert_raw_to_complex(&compressed_data.green),
+        convert_raw_to_complex(&compressed_data.blue),
+    );
+    println!("Decompressing... ");
+    let transformed_image = compressed_image.from_corners(&compressed_data.transformed_size);
+    println!("Transforming... ");
+    let restored_image = ComplexImage::new(
+        fft_2d_inverse(&transformed_image.red),
+        fft_2d_inverse(&transformed_image.green),
+        fft_2d_inverse(&transformed_image.blue),
+    );
+    ComplexImage::save_bitmap(&restored_image, output_file)?;
+    println!("Decompressed to: {output_file:?}");
+    Ok(())
+}
+
 pub fn analyze_image(
     filepath: &PathBuf,
     log_factor: f32,
     output_dir: &PathBuf,
-) -> Result<PathBuf, Box<dyn Error>> {
-    let image = bitmap_to_image(filepath)?;
+) -> Result<PathBuf, BoxedError> {
+    let image = ComplexImage::from_bitmap(filepath)?;
     let horizontal = ComplexImage::new(
         fft_2d_horizontal(&image.red),
         fft_2d_horizontal(&image.green),
@@ -80,200 +137,250 @@ pub fn analyze_image(
     Ok(output_path)
 }
 
-pub fn compress_bmp(
-    bmp_file: &PathBuf,
-    compressed_file: &PathBuf,
-    compression_level: f32,
-) -> Result<(), Box<dyn Error>> {
-    println!(
-        "Compressing {:?} at level {:?}... ",
-        bmp_file, compression_level
-    );
-    let original_image = bitmap_to_image(&bmp_file)?;
-    println!("Transforming... ");
-    let mut transformed_image = ComplexImage::new(
-        fft_2d(&original_image.red),
-        fft_2d(&original_image.green),
-        fft_2d(&original_image.blue),
-    );
-    println!("Compressing... ");
-    cut_image(&mut transformed_image, compression_level);
-    let compressed = SerializableComplexImage::from_image(&transformed_image);
-    let encoded = bincode::serialize(&compressed)?;
-    let mut file = File::create(compressed_file)?;
-    file.write_all(&encoded)?;
-    println!("Compressed to: {:?}", compressed_file);
-    Ok(())
-}
+type BoxedError = Box<dyn std::error::Error>;
+type Channel<T> = Vec<Vec<T>>;
+type ComplexChannel = Channel<Complex32>;
+type RawChannel = Channel<(f32, f32)>;
 
-pub fn decompress_bmp(
-    compressed_file: &PathBuf,
-    output_file: &PathBuf,
-) -> Result<(), Box<dyn Error>> {
-    println!("Decompressing {:?}... ", compressed_file);
-    let mut encoded: Vec<u8> = Vec::new();
-    let mut file = File::open(compressed_file)?;
-    file.read_to_end(&mut encoded)?;
-    let decoded: SerializableComplexImage = bincode::deserialize(&encoded)?;
-    let mut transformed_image = decoded.to_image();
-    println!("Decompressing... ");
-    restore_image(&mut transformed_image);
-    println!("Transforming... ");
-    let restored_image = ComplexImage::new(
-        fft_2d_inverse(&transformed_image.red),
-        fft_2d_inverse(&transformed_image.green),
-        fft_2d_inverse(&transformed_image.blue),
-    );
-    image_to_bitmap(&restored_image, output_file)?;
-    println!("Decompressed to: {:?}", output_file);
-    Ok(())
-}
-
+#[derive(Clone)]
 struct ComplexImage {
-    pub red: Vec<Vec<Complex32>>,
-    pub green: Vec<Vec<Complex32>>,
-    pub blue: Vec<Vec<Complex32>>,
-    pub original_width: usize,
-    pub original_height: usize,
+    pub red: ComplexChannel,
+    pub green: ComplexChannel,
+    pub blue: ComplexChannel,
+}
+
+impl Debug for ComplexImage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ComplexImage {{ {}x{} }}", self.width(), self.height())
+    }
 }
 
 impl ComplexImage {
+    pub fn new(red: ComplexChannel, green: ComplexChannel, blue: ComplexChannel) -> ComplexImage {
+        ComplexImage { red, green, blue }
+    }
+
+    pub fn size(&self) -> (usize, usize) {
+        (self.width(), self.height())
+    }
+
+    pub fn width(&self) -> usize {
+        if self.red.is_empty() {
+            return 0;
+        }
+        assert_eq!(self.red[0].len(), self.green[0].len());
+        assert_eq!(self.red[0].len(), self.blue[0].len());
+        self.red[0].len()
+    }
+
+    pub fn height(&self) -> usize {
+        assert_eq!(self.red.len(), self.green.len());
+        assert_eq!(self.red.len(), self.blue.len());
+        self.red.len()
+    }
+
+    pub fn from_bitmap(filepath: &PathBuf) -> Result<ComplexImage, BoxedError> {
+        let bmp_data = bmp::open(filepath)?;
+        let width = bmp_data.get_width() as usize;
+        let height = bmp_data.get_height() as usize;
+        let mut red = Vec::with_capacity(height);
+        let mut green = Vec::with_capacity(height);
+        let mut blue = Vec::with_capacity(height);
+        for y in 0..height {
+            let mut r_row = Vec::with_capacity(width);
+            let mut g_row = Vec::with_capacity(width);
+            let mut b_row = Vec::with_capacity(width);
+            for x in 0..width {
+                let pix = bmp_data.get_pixel(x as u32, y as u32);
+                r_row.push(Complex32::from(pix.r as f32));
+                g_row.push(Complex32::from(pix.g as f32));
+                b_row.push(Complex32::from(pix.b as f32));
+            }
+            red.push(r_row);
+            green.push(g_row);
+            blue.push(b_row);
+        }
+        Ok(ComplexImage::new(red, green, blue))
+    }
+
+    pub fn save_bitmap(&self, filepath: &PathBuf) -> Result<(), BoxedError> {
+        let (width, height) = (self.red[0].len(), self.red.len());
+        let mut bmp_image = bmp::Image::new(width as u32, height as u32);
+        for y in 0..height {
+            for x in 0..width {
+                bmp_image.set_pixel(
+                    x as u32,
+                    y as u32,
+                    bmp::Pixel::new(
+                        (self.red[y][x].norm()) as u8,
+                        (self.green[y][x].norm()) as u8,
+                        (self.blue[y][x].norm()) as u8,
+                    ),
+                );
+            }
+        }
+        bmp_image.save(filepath)?;
+        Ok(())
+    }
+
+    /// Returns a new ComplexImage containing only the corners of this image.
+    /// Returns an error if the new_width or new_height are larger than the current width and height.
+    fn corners(&self, new_width: usize, new_height: usize) -> Result<Self, ()> {
+        if new_width >= self.width() || new_height >= self.height() {
+            return Err(());
+        }
+        let corner_width = new_width / 2;
+        let corner_height = new_height / 2;
+        let channels = self.channels();
+        let new_channels = channels
+            .iter()
+            .map(|c| self.channel_corners(c, &corner_width, &corner_height));
+        Ok(Self::from_iter(new_channels))
+    }
+
+    fn channel_corners(
+        &self,
+        channel: &ComplexChannel,
+        corner_width: &usize,
+        corner_height: &usize,
+    ) -> ComplexChannel {
+        let inverse_width = self.width() - corner_width;
+        let inverse_height = self.height() - corner_height;
+        let vert_slice =
+            (0usize..corner_height.clone()).chain(inverse_height.clone()..self.height());
+        let mut new_channel = ComplexChannel::new();
+        for y in vert_slice {
+            let mut row: Vec<Complex32> = Vec::with_capacity(corner_width * 2);
+            row.extend_from_slice(&channel[y][..corner_width.clone()]);
+            row.extend_from_slice(&channel[y][inverse_width.clone()..self.width()]);
+            new_channel.push(row);
+        }
+        new_channel
+    }
+
+    fn from_corners(&self, original_size: &(usize, usize)) -> Self {
+        ComplexImage::from_iter(
+            self.channels()
+                .iter()
+                .map(|channel| self.from_channel_corners(channel, &original_size)),
+        )
+    }
+
+    fn from_channel_corners(
+        &self,
+        channel: &ComplexChannel,
+        original_size: &(usize, usize),
+    ) -> ComplexChannel {
+        let mid_width = self.size().0 / 2;
+        let mid_height = self.size().1 / 2;
+        let missing_width = original_size.0 - self.size().0;
+        let missing_height = original_size.1 - self.size().1;
+        let pad_width = vec![Complex32::default(); missing_width];
+        let pad_height = vec![vec![Complex32::default(); original_size.0]; missing_height];
+        let mut new_channel = channel.clone();
+        new_channel
+            .iter_mut()
+            .map(|row| {
+                row.splice(mid_width..mid_width, pad_width.clone());
+            })
+            .for_each(drop);
+        new_channel.splice(mid_height..mid_height, pad_height);
+        new_channel
+    }
+
+    pub fn channels(&self) -> [&ComplexChannel; 3] {
+        [&self.red, &self.green, &self.blue]
+    }
+}
+
+impl FromIterator<ComplexChannel> for ComplexImage {
+    fn from_iter<T: IntoIterator<Item = ComplexChannel>>(iterable: T) -> Self {
+        let mut iter = iterable.into_iter();
+        Self::new(
+            iter.next().expect("expected red channel"),
+            iter.next().expect("expected green channel"),
+            iter.next().expect("expected blue channel"),
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct CompressedData {
+    red: RawChannel,
+    green: RawChannel,
+    blue: RawChannel,
+    transformed_size: (usize, usize),
+    original_size: (usize, usize),
+}
+
+impl CompressedData {
     pub fn new(
-        red: Vec<Vec<Complex32>>,
-        green: Vec<Vec<Complex32>>,
-        blue: Vec<Vec<Complex32>>,
-    ) -> ComplexImage {
-        let original_width = red[0].len();
-        let original_height = red.len();
-        ComplexImage {
+        red: RawChannel,
+        green: RawChannel,
+        blue: RawChannel,
+        transformed_size: (usize, usize),
+        original_size: (usize, usize),
+    ) -> Self {
+        CompressedData {
             red,
             green,
             blue,
-            original_width,
-            original_height,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct SerializableComplexImage {
-    red: Vec<Vec<(f32, f32)>>,
-    green: Vec<Vec<(f32, f32)>>,
-    blue: Vec<Vec<(f32, f32)>>,
-    width: usize,
-    height: usize,
-}
-
-impl SerializableComplexImage {
-    pub fn from_image(image: &ComplexImage) -> SerializableComplexImage {
-        SerializableComplexImage {
-            red: image
-                .red
-                .iter()
-                .map(|row| row.iter().map(|c| (c.re, c.im)).collect())
-                .collect(),
-            green: image
-                .green
-                .iter()
-                .map(|row| row.iter().map(|c| (c.re, c.im)).collect())
-                .collect(),
-            blue: image
-                .blue
-                .iter()
-                .map(|row| row.iter().map(|c| (c.re, c.im)).collect())
-                .collect(),
-            width: image.original_width,
-            height: image.original_height,
+            transformed_size,
+            original_size,
         }
     }
 
-    pub fn to_image(&self) -> ComplexImage {
-        ComplexImage {
-            red: self
-                .red
-                .iter()
-                .map(|row| {
-                    row.iter()
-                        .map(|(re, im)| Complex32::new(re.clone(), im.clone()))
-                        .collect()
-                })
-                .collect(),
-            green: self
-                .green
-                .iter()
-                .map(|row| {
-                    row.iter()
-                        .map(|(re, im)| Complex32::new(re.clone(), im.clone()))
-                        .collect()
-                })
-                .collect(),
-            blue: self
-                .blue
-                .iter()
-                .map(|row| {
-                    row.iter()
-                        .map(|(re, im)| Complex32::new(re.clone(), im.clone()))
-                        .collect()
-                })
-                .collect(),
-            original_width: self.width,
-            original_height: self.height,
+    pub fn width(&self) -> usize {
+        if self.red.is_empty() {
+            return 0;
         }
+        assert_eq!(self.red[0].len(), self.green[0].len());
+        assert_eq!(self.red[0].len(), self.blue[0].len());
+        self.red[0].len()
+    }
+
+    pub fn height(&self) -> usize {
+        assert_eq!(self.red.len(), self.green.len());
+        assert_eq!(self.red.len(), self.blue.len());
+        self.red.len()
     }
 }
 
-fn bitmap_to_image(filepath: &PathBuf) -> Result<ComplexImage, Box<dyn Error>> {
-    let bmp_data = bmp::open(filepath)?;
-    let width = bmp_data.get_width() as usize;
-    let height = bmp_data.get_height() as usize;
-    let mut red = Vec::with_capacity(height);
-    let mut green = Vec::with_capacity(height);
-    let mut blue = Vec::with_capacity(height);
-    for y in 0..height {
-        let mut r_row = Vec::with_capacity(width);
-        let mut g_row = Vec::with_capacity(width);
-        let mut b_row = Vec::with_capacity(width);
-        for x in 0..width {
-            let pix = bmp_data.get_pixel(x as u32, y as u32);
-            r_row.push(Complex32::from(pix.r as f32));
-            g_row.push(Complex32::from(pix.g as f32));
-            b_row.push(Complex32::from(pix.b as f32));
-        }
-        red.push(r_row);
-        green.push(g_row);
-        blue.push(b_row);
+impl Debug for CompressedData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "SerializableComplexImage {{ {}x{} -> {}x{} -> {}x{} }}",
+            self.width(),
+            self.height(),
+            self.transformed_size.0,
+            self.transformed_size.1,
+            self.original_size.0,
+            self.original_size.1,
+        )
     }
-    Ok(ComplexImage::new(red, green, blue))
 }
 
-fn image_to_bitmap(image: &ComplexImage, filepath: &PathBuf) -> Result<(), Box<dyn Error>> {
-    let (width, height) = (image.red[0].len(), image.red.len());
-    let mut bmp_image = bmp::Image::new(width as u32, height as u32);
-    for y in 0..height {
-        for x in 0..width {
-            bmp_image.set_pixel(
-                x as u32,
-                y as u32,
-                bmp::Pixel::new(
-                    (image.red[y][x].norm()) as u8,
-                    (image.green[y][x].norm()) as u8,
-                    (image.blue[y][x].norm()) as u8,
-                ),
-            );
-        }
-    }
-    bmp_image.save(filepath)?;
-    Ok(())
+fn convert_complex_to_raw(channel: &ComplexChannel) -> RawChannel {
+    channel
+        .iter()
+        .map(|row| row.iter().map(|c| (c.re, c.im)).collect())
+        .collect()
 }
 
-fn shift_image(image: &mut ComplexImage) {
-    shift_vectors(&mut image.red);
-    shift_vectors(&mut image.green);
-    shift_vectors(&mut image.blue);
+fn convert_raw_to_complex(channel: &RawChannel) -> ComplexChannel {
+    channel
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|(re, im)| Complex32::new(re.clone(), im.clone()))
+                .collect()
+        })
+        .collect()
 }
 
-fn shift_vectors<T>(vvec: &mut Vec<Vec<T>>) {
-    let (width, height) = (vvec.len(), vvec[0].len());
+fn shift_vector<T>(channel: &mut Channel<T>) {
+    let (width, height) = (channel.len(), channel[0].len());
     let (half_width, half_height) = (width / 2, height / 2);
     let mut x2;
     let mut y2;
@@ -281,70 +388,16 @@ fn shift_vectors<T>(vvec: &mut Vec<Vec<T>>) {
         x2 = x + half_width;
         for y in 0..half_height {
             y2 = y + half_height;
-            vvec[x].swap(y, y2);
-            vvec[x2].swap(y, y2);
+            channel[x].swap(y, y2);
+            channel[x2].swap(y, y2);
         }
-        vvec.swap(x, x2);
-    }
-}
-
-fn restore_image(image: &mut ComplexImage) {
-    fn pad_vvec(vvec: &mut Vec<Vec<Complex32>>, width: usize, height: usize) {
-        fn pad_horizontal(vvec: &mut Vec<Vec<Complex32>>, width_padding: usize) {
-            for row in vvec {
-                row.append(&mut vec![Complex32::default(); width_padding]);
-                row.splice(0..0, vec![Complex32::default(); width_padding]);
-            }
-        }
-        let width_padding = (width - vvec[0].len()) / 2;
-        pad_horizontal(vvec, width_padding);
-        let height_padding = (height - vvec.len()) / 2;
-        vvec.append(&mut vec![vec![Complex32::default(); width]; height_padding]);
-        vvec.splice(
-            0..0,
-            vec![vec![Complex32::default(); width]; height_padding],
-        );
-    }
-    pad_vvec(&mut image.red, image.original_width, image.original_height);
-    pad_vvec(
-        &mut image.green,
-        image.original_width,
-        image.original_height,
-    );
-    pad_vvec(&mut image.blue, image.original_width, image.original_height);
-    shift_image(image);
-}
-
-fn cut_image(image: &mut ComplexImage, compression_level: f32) {
-    shift_image(image);
-    let (width, height) = (image.red[0].len(), image.red.len());
-    let compress_x = ((width as f32 - width as f32 / compression_level) / 2.) as usize;
-    let compress_y = ((height as f32 - height as f32 / compression_level) / 2.) as usize;
-    image.original_width = width;
-    image.original_height = height;
-    drain_vectors(&mut image.red, width, height, compress_x, compress_y);
-    drain_vectors(&mut image.green, width, height, compress_x, compress_y);
-    drain_vectors(&mut image.blue, width, height, compress_x, compress_y);
-}
-
-fn drain_vectors<T>(
-    vvec: &mut Vec<Vec<T>>,
-    width: usize,
-    height: usize,
-    compress_x: usize,
-    compress_y: usize,
-) {
-    vvec.truncate(height - compress_y);
-    vvec.drain(0..compress_y);
-    for row in vvec {
-        row.truncate(width - compress_x);
-        row.drain(0..compress_x);
+        channel.swap(x, x2);
     }
 }
 
 fn image_to_trace(image: &ComplexImage, log_factor: f32, shift: bool) -> Box<Image> {
     // Assumes image is properly formed
-    let (width, height) = (image.red.len(), image.red[0].len());
+    let (width, height) = (image.width(), image.height());
     let mut converted_image = Vec::with_capacity(width);
     let mut max_value = 0.;
     for y in 0..width {
@@ -358,7 +411,7 @@ fn image_to_trace(image: &ComplexImage, log_factor: f32, shift: bool) -> Box<Ima
         }
         converted_image.push(column);
     }
-    let mut normalized_image: Vec<Vec<Rgb>> = converted_image
+    let mut normalized_image: Channel<Rgb> = converted_image
         .iter()
         .map(|y| {
             y.iter()
@@ -374,7 +427,7 @@ fn image_to_trace(image: &ComplexImage, log_factor: f32, shift: bool) -> Box<Ima
         })
         .collect();
     if shift == true {
-        shift_vectors(&mut normalized_image);
+        shift_vector(&mut normalized_image);
     }
     Image::new(normalized_image).color_model(ColorModel::RGB)
 }
