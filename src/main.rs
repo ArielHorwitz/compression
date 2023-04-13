@@ -6,6 +6,8 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::process::Command;
 
+type BoxedError = Box<dyn std::error::Error>;
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -30,7 +32,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     let file = PathBuf::from(args.file);
     if !file.is_file() {
-        panic!("Not a file.")
+        return Err(BoxedError::from("Not a file."));
     }
     let stem = file
         .file_stem()
@@ -49,19 +51,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                 let analysis = wav::analyze_waveform(&file, &output_dir)?;
                 Command::new("xdg-open").arg(analysis).spawn()?;
             } else {
-                let compression_level = match args.compression.partial_cmp(&1.).expect(&format!(
-                    "expected a number for compression level, got: {}",
-                    args.compression
-                )) {
-                    Ordering::Greater => args.compression,
+                let compression_level = match args.compression.partial_cmp(&1.) {
+                    Some(Ordering::Greater) => args.compression,
                     _ => 1.,
                 };
                 let freq_cutoff = (22050. / compression_level).ceil() as usize;
                 let compressed_output = output_dir.join(format!("{stem}_compressed.cmp"));
-                println!("Compressing to: {:?}", compressed_output);
+                println!("Compressing to: {compressed_output:?}");
                 wav::compress_wav(&file, &compressed_output, freq_cutoff)?;
                 let decompressed_output = output_dir.join(format!("{stem}_decompressed.wav"));
-                println!("Decompressing to: {:?}", decompressed_output);
+                println!("Decompressing to: {decompressed_output:?}");
                 wav::decompress_wav(&compressed_output, &decompressed_output)?;
             }
         }
@@ -71,11 +70,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 let analysis = bmp::analyze_image(&file, log_factor, &output_dir)?;
                 Command::new("xdg-open").arg(analysis).spawn()?;
             } else {
-                let compression_level = match args.compression.partial_cmp(&0.).expect(&format!(
-                    "expected a number for compression level, got: {}",
-                    args.compression
-                )) {
-                    Ordering::Greater => args.compression,
+                let compression_level = match args.compression.partial_cmp(&0.) {
+                    Some(Ordering::Greater) => args.compression,
                     _ => 0.01,
                 };
                 let compressed_output = output_dir.join(format!("{stem}_compressed.cmp"));
@@ -84,7 +80,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                 bmp::decompress_bmp(&compressed_output, &decompressed_output)?;
             }
         }
-        _ => panic!("file suffix unrecognized: expected .wav or .bmp"),
+        _ => {
+            return Err(BoxedError::from(
+                "file suffix unrecognized: expected .wav or .bmp",
+            ))
+        }
     }
     Ok(())
 }
