@@ -92,9 +92,9 @@ pub fn analyze_image(
         fft_2d_vertical(&image.blue),
     );
     let transformed = ComplexImage::new(
-        fft_2d(&image.red),
-        fft_2d(&image.green),
-        fft_2d(&image.blue),
+        fft_2d_vertical(&horizontal.red),
+        fft_2d_vertical(&horizontal.green),
+        fft_2d_vertical(&horizontal.blue),
     );
     // Plot
     let layout = Layout::new()
