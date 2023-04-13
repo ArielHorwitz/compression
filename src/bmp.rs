@@ -23,14 +23,12 @@ pub fn compress_bmp(
 ) -> Result<(), BoxedError> {
     println!("Compressing {bmp_file:?} at level {compression_level:?}... ",);
     let original_image = ComplexImage::from_bitmap(&bmp_file)?;
-    println!("Transforming... ");
     let rounded_image = original_image.round_up();
     let transformed_image = ComplexImage::new(
         fft_2d(&rounded_image.red),
         fft_2d(&rounded_image.green),
         fft_2d(&rounded_image.blue),
     );
-    println!("Compressing... ");
     let new_width = (transformed_image.width() as f32 / compression_level) as usize;
     let new_height = (transformed_image.height() as f32 / compression_level) as usize;
     let compressed_image = &transformed_image
@@ -61,9 +59,7 @@ pub fn decompress_bmp(compressed_file: &PathBuf, output_file: &PathBuf) -> Resul
         convert_raw_to_complex(&compressed_data.green),
         convert_raw_to_complex(&compressed_data.blue),
     );
-    println!("Decompressing... ");
     let transformed_image = compressed_image.from_corners(&compressed_data.transformed_size);
-    println!("Transforming... ");
     let rounded_image = ComplexImage::new(
         fft_2d_inverse(&transformed_image.red),
         fft_2d_inverse(&transformed_image.green),
@@ -80,6 +76,7 @@ pub fn analyze_image(
     log_factor: f32,
     output_dir: &PathBuf,
 ) -> Result<PathBuf, BoxedError> {
+    println!("Analyzing {filepath:?}... ");
     let image = ComplexImage::from_bitmap(filepath)?.round_up();
     let horizontal = ComplexImage::new(
         fft_2d_horizontal(&image.red),
