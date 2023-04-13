@@ -24,10 +24,11 @@ pub fn compress_bmp(
     println!("Compressing {bmp_file:?} at level {compression_level:?}... ",);
     let original_image = ComplexImage::from_bitmap(&bmp_file)?;
     println!("Transforming... ");
+    let rounded_image = original_image.round_up();
     let transformed_image = ComplexImage::new(
-        fft_2d(&original_image.red),
-        fft_2d(&original_image.green),
-        fft_2d(&original_image.blue),
+        fft_2d(&rounded_image.red),
+        fft_2d(&rounded_image.green),
+        fft_2d(&rounded_image.blue),
     );
     println!("Compressing... ");
     let new_width = (transformed_image.width() as f32 / compression_level) as usize;
@@ -63,11 +64,12 @@ pub fn decompress_bmp(compressed_file: &PathBuf, output_file: &PathBuf) -> Resul
     println!("Decompressing... ");
     let transformed_image = compressed_image.from_corners(&compressed_data.transformed_size);
     println!("Transforming... ");
-    let restored_image = ComplexImage::new(
+    let rounded_image = ComplexImage::new(
         fft_2d_inverse(&transformed_image.red),
         fft_2d_inverse(&transformed_image.green),
         fft_2d_inverse(&transformed_image.blue),
     );
+    let restored_image = rounded_image.truncate(compressed_data.original_size);
     ComplexImage::save_bitmap(&restored_image, output_file)?;
     println!("Decompressed to: {output_file:?}");
     Ok(())
@@ -78,7 +80,7 @@ pub fn analyze_image(
     log_factor: f32,
     output_dir: &PathBuf,
 ) -> Result<PathBuf, BoxedError> {
-    let image = ComplexImage::from_bitmap(filepath)?;
+    let image = ComplexImage::from_bitmap(filepath)?.round_up();
     let horizontal = ComplexImage::new(
         fft_2d_horizontal(&image.red),
         fft_2d_horizontal(&image.green),
@@ -177,6 +179,31 @@ impl ComplexImage {
         assert_eq!(self.red.len(), self.green.len());
         assert_eq!(self.red.len(), self.blue.len());
         self.red.len()
+    }
+
+    pub fn round_up(&self) -> Self {
+        let new_width = 2f64.powf((self.width() as f64).log2().ceil()) as usize;
+        let new_height = 2f64.powf((self.height() as f64).log2().ceil()) as usize;
+        let extra_width = new_width - self.width();
+        let extra_height = new_height - self.height();
+        Self::from_iter(self.channels().iter().map(|channel| {
+            let mut new_channel = channel.clone().to_owned();
+            new_channel
+                .iter_mut()
+                .map(|row| row.extend(vec![Complex32::default(); extra_width]))
+                .for_each(drop);
+            new_channel.extend(vec![vec![Complex32::default(); new_width]; extra_height]);
+            new_channel
+        }))
+    }
+
+    pub fn truncate(&self, new_size: (usize, usize)) -> Self {
+        Self::from_iter(self.channels().iter().map(|channel| {
+            channel[..new_size.1]
+                .iter()
+                .map(|row| row[..new_size.0].to_vec())
+                .collect()
+        }))
     }
 
     pub fn from_bitmap(filepath: &PathBuf) -> Result<ComplexImage, BoxedError> {
@@ -398,18 +425,18 @@ fn shift_vector<T>(channel: &mut Channel<T>) {
 fn image_to_trace(image: &ComplexImage, log_factor: f32, shift: bool) -> Box<Image> {
     // Assumes image is properly formed
     let (width, height) = (image.width(), image.height());
-    let mut converted_image = Vec::with_capacity(width);
+    let mut converted_image = Vec::with_capacity(height);
     let mut max_value = 0.;
-    for y in 0..width {
-        let mut column = Vec::with_capacity(height);
-        for x in 0..height {
+    for y in 0..height {
+        let mut row = Vec::with_capacity(width);
+        for x in 0..width {
             let r = image.red[y][x].norm();
             let g = image.green[y][x].norm();
             let b = image.blue[y][x].norm();
-            column.push((r, g, b));
+            row.push((r, g, b));
             max_value = f32::max(f32::max(f32::max(max_value, r), g), b);
         }
-        converted_image.push(column);
+        converted_image.push(row);
     }
     let mut normalized_image: Channel<Rgb> = converted_image
         .iter()
