@@ -21,7 +21,6 @@ pub fn compress_bmp(
     compressed_file: &PathBuf,
     compression_level: f32,
 ) -> Result<(), BoxedError> {
-    println!("Compressing {bmp_file:?} at level {compression_level:?}... ",);
     let original_image = ComplexImage::from_bitmap(&bmp_file)?;
     let rounded_image = original_image.round_up();
     let transformed_image = ComplexImage::new(
@@ -44,12 +43,10 @@ pub fn compress_bmp(
     let encoded = bincode::serialize(&compressed_data)?;
     let mut file = File::create(compressed_file)?;
     file.write_all(&encoded)?;
-    println!("Compressed to: {compressed_file:?}");
     Ok(())
 }
 
 pub fn decompress_bmp(compressed_file: &PathBuf, output_file: &PathBuf) -> Result<(), BoxedError> {
-    println!("Decompressing {compressed_file:?}... ");
     let mut encoded: Vec<u8> = Vec::new();
     let mut file = File::open(compressed_file)?;
     file.read_to_end(&mut encoded)?;
@@ -67,7 +64,6 @@ pub fn decompress_bmp(compressed_file: &PathBuf, output_file: &PathBuf) -> Resul
     );
     let restored_image = rounded_image.truncate(compressed_data.original_size);
     ComplexImage::save_bitmap(&restored_image, output_file)?;
-    println!("Decompressed to: {output_file:?}");
     Ok(())
 }
 

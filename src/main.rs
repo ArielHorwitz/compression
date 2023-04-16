@@ -45,46 +45,50 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_string_lossy()
         .to_string();
     let output_dir = PathBuf::from(args.output_dir);
-    match suffix.as_str() {
-        "wav" => {
-            if args.analyze {
-                let analysis = wav::analyze_waveform(&file, &output_dir)?;
-                Command::new("xdg-open").arg(analysis).spawn()?;
-            } else {
-                let compression_level = match args.compression.partial_cmp(&1.) {
-                    Some(Ordering::Greater) => args.compression,
-                    _ => 1.,
-                };
-                let freq_cutoff = (22050. / compression_level).ceil() as usize;
-                let compressed_output = output_dir.join(format!("{stem}_compressed.cmp"));
-                println!("Compressing to: {compressed_output:?}");
-                wav::compress_wav(&file, &compressed_output, freq_cutoff)?;
-                let decompressed_output = output_dir.join(format!("{stem}_decompressed.wav"));
-                println!("Decompressing to: {decompressed_output:?}");
-                wav::decompress_wav(&compressed_output, &decompressed_output)?;
-            }
+    match (suffix.as_str(), args.analyze) {
+        // Compress
+        ("wav", false) => {
+            let compression_level = match args.compression.partial_cmp(&1.) {
+                Some(Ordering::Greater) => args.compression,
+                _ => 1.,
+            };
+            let freq_cutoff = (22050. / compression_level).ceil() as usize;
+            let compressed_output = output_dir.join(format!("{stem}.cwv"));
+            wav::compress_wav(&file, &compressed_output, freq_cutoff)?;
+            println!("Compressed to: {compressed_output:?}");
         }
-        "bmp" => {
-            if args.analyze {
-                let log_factor = 1. / args.log_factor;
-                let analysis = bmp::analyze_image(&file, log_factor, &output_dir)?;
-                Command::new("xdg-open").arg(analysis).spawn()?;
-            } else {
-                let compression_level = match args.compression.partial_cmp(&0.) {
-                    Some(Ordering::Greater) => args.compression,
-                    _ => 0.01,
-                };
-                let compressed_output = output_dir.join(format!("{stem}_compressed.cmp"));
-                let decompressed_output = output_dir.join(format!("{stem}_decompressed.bmp"));
-                bmp::compress_bmp(&file, &compressed_output, compression_level)?;
-                bmp::decompress_bmp(&compressed_output, &decompressed_output)?;
-            }
+        ("bmp", false) => {
+            let compression_level = match args.compression.partial_cmp(&0.) {
+                Some(Ordering::Greater) => args.compression,
+                _ => 0.01,
+            };
+            let compressed_output = output_dir.join(format!("{stem}.cbm"));
+            bmp::compress_bmp(&file, &compressed_output, compression_level)?;
+            println!("Compressed to: {compressed_output:?}");
         }
-        _ => {
-            return Err(BoxedError::from(
-                "file suffix unrecognized: expected .wav or .bmp",
-            ))
+        // Decompress
+        ("cwv", false) => {
+            let decompressed_output = output_dir.join(format!("{stem}_decompressed.wav"));
+            wav::decompress_wav(&file, &decompressed_output)?;
+            println!("Decompressed to: {decompressed_output:?}");
         }
+        ("cbm", false) => {
+            let decompressed_output = output_dir.join(format!("{stem}_decompressed.bmp"));
+            bmp::decompress_bmp(&file, &decompressed_output)?;
+            println!("Decompressed to: {decompressed_output:?}");
+        }
+        // Analyze
+        ("wav", true) => {
+            let analysis = wav::analyze_waveform(&file, &output_dir)?;
+            println!("Analysis file: {analysis:?}");
+            Command::new("xdg-open").arg(analysis).spawn()?;
+        }
+        ("bmp", true) => {
+            let log_factor = 1. / args.log_factor;
+            let analysis = bmp::analyze_image(&file, log_factor, &output_dir)?;
+            Command::new("xdg-open").arg(analysis).spawn()?;
+        }
+        _ => return Err(BoxedError::from("file suffix unrecognized")),
     }
     Ok(())
 }
