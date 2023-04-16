@@ -9,13 +9,15 @@ It can also analyze a given media file by plotting both time/color and frequency
 
 ```
 $ cargo run -- --help
-Usage: compression [OPTIONS] --file <FILE>
+Usage: compression [OPTIONS] <FILE>
+
+Arguments:
+  <FILE>  Input file (.wav or .bmp)
 
 Options:
-  -f, --file <FILE>                Input file (.wav or .bmp)
   -c, --compression <COMPRESSION>  Compression level (higher: smaller file size, lower: better quality) [default: 10]
   -a, --analyze                    Analyze frequencies
-  -l, --log-factor <LOG_FACTOR>    Log factor (when analyzing) [default: 5]
+  -l, --log-factor <LOG_FACTOR>    Log factor (when analyzing) [default: 2.5]
   -o, --output-dir <OUTPUT_DIR>    Output directory [default: data]
   -h, --help                       Print help
   -V, --version                    Print version

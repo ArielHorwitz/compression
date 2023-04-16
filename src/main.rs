@@ -12,7 +12,7 @@ type BoxedError = Box<dyn std::error::Error>;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Input file (.wav or .bmp)
-    #[arg(short, long)]
+    #[arg()]
     file: String,
     /// Compression level (higher: smaller file size, lower: better quality)
     #[arg(short = 'c', long, default_value_t = 10.)]
@@ -21,7 +21,7 @@ struct Args {
     #[arg(short, long, default_value_t = false)]
     analyze: bool,
     /// Log factor (when analyzing)
-    #[arg(short = 'l', long, default_value_t = 5.)]
+    #[arg(short = 'l', long, default_value_t = 2.5)]
     log_factor: f32,
     /// Output directory
     #[arg(short, long, default_value_t = String::from("data"))]
