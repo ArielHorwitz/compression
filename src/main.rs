@@ -45,25 +45,24 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_string_lossy()
         .to_string();
     let output_dir = PathBuf::from(args.output_dir);
+    let wav_freq_cutoff = match args.compression.partial_cmp(&1.) {
+        Some(Ordering::Greater) => (22050. / args.compression).ceil() as usize,
+        _ => 22050,
+    };
+    let bmp_compression_level = match args.compression.partial_cmp(&0.) {
+        Some(Ordering::Greater) => args.compression,
+        _ => 0.01,
+    };
     match (suffix.as_str(), args.analyze) {
         // Compress
         ("wav", false) => {
-            let compression_level = match args.compression.partial_cmp(&1.) {
-                Some(Ordering::Greater) => args.compression,
-                _ => 1.,
-            };
-            let freq_cutoff = (22050. / compression_level).ceil() as usize;
             let compressed_output = output_dir.join(format!("{stem}.cwv"));
-            wav::compress_wav(&file, &compressed_output, freq_cutoff)?;
+            wav::compress_wav(&file, &compressed_output, wav_freq_cutoff)?;
             println!("Compressed to: {compressed_output:?}");
         }
         ("bmp", false) => {
-            let compression_level = match args.compression.partial_cmp(&0.) {
-                Some(Ordering::Greater) => args.compression,
-                _ => 0.01,
-            };
             let compressed_output = output_dir.join(format!("{stem}.cbm"));
-            bmp::compress_bmp(&file, &compressed_output, compression_level)?;
+            bmp::compress_bmp(&file, &compressed_output, bmp_compression_level)?;
             println!("Compressed to: {compressed_output:?}");
         }
         // Decompress
