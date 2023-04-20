@@ -1,9 +1,6 @@
 # FFT Compression
 
-This project is a proof of concept for media compression using the FFT algorithm.
-
-It compresses and decompresses a *`.wav`* or *`.bmp`* file by applying an FFT algorithm and truncating higher frequencies.
-It can also analyze a given media file by plotting both time/color and frequency domains.
+Proof of concept for audio and image file compression and analysis using a custom implementation of the FFT algorithm.
 
 ![Analysis output](/analysis.png)
 
