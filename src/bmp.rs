@@ -12,16 +12,17 @@ use plotly::{
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, fs::File};
 use std::{
-    io::{Read, Write},
-    path::PathBuf,
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
 };
 
 pub fn compress_bmp(
-    bmp_file: &PathBuf,
-    compressed_file: &PathBuf,
+    bmp_file: &Path,
+    compressed_file: &Path,
     compression_level: f32,
 ) -> Result<(), BoxedError> {
-    let original_image = ComplexImage::from_bitmap(&bmp_file)?;
+    let original_image = ComplexImage::from_bitmap(bmp_file)?;
     let rounded_image = original_image.round_up();
     let transformed_image = ComplexImage::new(
         fft_2d(&rounded_image.red),
@@ -46,17 +47,15 @@ pub fn compress_bmp(
     Ok(())
 }
 
-pub fn decompress_bmp(compressed_file: &PathBuf, output_file: &PathBuf) -> Result<(), BoxedError> {
-    let mut encoded: Vec<u8> = Vec::new();
-    let mut file = File::open(compressed_file)?;
-    file.read_to_end(&mut encoded)?;
+pub fn decompress_bmp(compressed_file: &Path, output_file: &Path) -> Result<(), BoxedError> {
+    let encoded: Vec<u8> = fs::read(compressed_file)?;
     let compressed_data: CompressedData = bincode::deserialize(&encoded)?;
     let compressed_image = ComplexImage::new(
         convert_raw_to_complex(&compressed_data.red),
         convert_raw_to_complex(&compressed_data.green),
         convert_raw_to_complex(&compressed_data.blue),
     );
-    let transformed_image = compressed_image.from_corners(&compressed_data.transformed_size);
+    let transformed_image = compressed_image.fill_from_corners(compressed_data.transformed_size);
     let rounded_image = ComplexImage::new(
         fft_2d_inverse(&transformed_image.red),
         fft_2d_inverse(&transformed_image.green),
@@ -68,9 +67,9 @@ pub fn decompress_bmp(compressed_file: &PathBuf, output_file: &PathBuf) -> Resul
 }
 
 pub fn analyze_image(
-    filepath: &PathBuf,
+    filepath: &Path,
     log_factor: f32,
-    output_dir: &PathBuf,
+    output_dir: &Path,
 ) -> Result<PathBuf, BoxedError> {
     println!("Analyzing {filepath:?}... ");
     let image = ComplexImage::from_bitmap(filepath)?.round_up();
@@ -180,11 +179,10 @@ impl ComplexImage {
         let extra_width = new_width - self.width();
         let extra_height = new_height - self.height();
         Self::from_iter(self.channels().iter().map(|channel| {
-            let mut new_channel = channel.clone().to_owned();
+            let mut new_channel = channel.to_owned().to_owned();
             new_channel
                 .iter_mut()
-                .map(|row| row.extend(vec![Complex32::default(); extra_width]))
-                .for_each(drop);
+                .for_each(|row| row.extend(vec![Complex32::default(); extra_width]));
             new_channel.extend(vec![vec![Complex32::default(); new_width]; extra_height]);
             new_channel
         }))
@@ -199,7 +197,7 @@ impl ComplexImage {
         }))
     }
 
-    pub fn from_bitmap(filepath: &PathBuf) -> Result<ComplexImage, BoxedError> {
+    pub fn from_bitmap(filepath: &Path) -> Result<ComplexImage, BoxedError> {
         let bmp_data = bmp::open(filepath)?;
         let width = bmp_data.get_width() as usize;
         let height = bmp_data.get_height() as usize;
@@ -223,7 +221,7 @@ impl ComplexImage {
         Ok(ComplexImage::new(red, green, blue))
     }
 
-    pub fn save_bitmap(&self, filepath: &PathBuf) -> Result<(), BoxedError> {
+    pub fn save_bitmap(&self, filepath: &Path) -> Result<(), BoxedError> {
         let (width, height) = (self.red[0].len(), self.red.len());
         let mut bmp_image = bmp::Image::new(width as u32, height as u32);
         for y in 0..height {
@@ -254,42 +252,42 @@ impl ComplexImage {
         let channels = self.channels();
         let new_channels = channels
             .iter()
-            .map(|c| self.channel_corners(c, &corner_width, &corner_height));
+            .map(|c| self.channel_corners(c, corner_width, corner_height));
         Ok(Self::from_iter(new_channels))
     }
 
     fn channel_corners(
         &self,
         channel: &ComplexChannel,
-        corner_width: &usize,
-        corner_height: &usize,
+        corner_width: usize,
+        corner_height: usize,
     ) -> ComplexChannel {
         let inverse_width = self.width() - corner_width;
         let inverse_height = self.height() - corner_height;
         let vert_slice =
-            (0usize..corner_height.clone()).chain(inverse_height.clone()..self.height());
+            (0usize..corner_height).chain(inverse_height..self.height());
         let mut new_channel = ComplexChannel::new();
         for y in vert_slice {
             let mut row: Vec<Complex32> = Vec::with_capacity(corner_width * 2);
-            row.extend_from_slice(&channel[y][..corner_width.clone()]);
-            row.extend_from_slice(&channel[y][inverse_width.clone()..self.width()]);
+            row.extend_from_slice(&channel[y][..corner_width]);
+            row.extend_from_slice(&channel[y][inverse_width..self.width()]);
             new_channel.push(row);
         }
         new_channel
     }
 
-    fn from_corners(&self, original_size: &(usize, usize)) -> Self {
+    fn fill_from_corners(&self, original_size: (usize, usize)) -> Self {
         ComplexImage::from_iter(
             self.channels()
                 .iter()
-                .map(|channel| self.from_channel_corners(channel, &original_size)),
+                .map(|channel| self.fill_from_channel_corners(channel, original_size)),
         )
     }
 
-    fn from_channel_corners(
+    fn fill_from_channel_corners(
         &self,
         channel: &ComplexChannel,
-        original_size: &(usize, usize),
+        original_size: (usize, usize),
     ) -> ComplexChannel {
         let mid_width = self.size().0 / 2;
         let mid_height = self.size().1 / 2;
@@ -393,7 +391,7 @@ fn convert_raw_to_complex(channel: &RawChannel) -> ComplexChannel {
         .iter()
         .map(|row| {
             row.iter()
-                .map(|(re, im)| Complex32::new(re.clone(), im.clone()))
+                .map(|(re, im)| Complex32::new(*re, *im))
                 .collect()
         })
         .collect()
@@ -446,7 +444,7 @@ fn image_to_trace(image: &ComplexImage, log_factor: f32, shift: bool) -> Box<Ima
                 .collect()
         })
         .collect();
-    if shift == true {
+    if shift {
         shift_vector(&mut normalized_image);
     }
     Image::new(normalized_image).color_model(ColorModel::RGB)

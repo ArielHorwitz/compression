@@ -4,7 +4,7 @@ use std::f32::consts::PI;
 
 /// Convert a sequence of floats to complex numbers.
 pub fn convert_sample(sample: &[f32]) -> Vec<Complex32> {
-    sample.iter().map(|x| Complex32::from(x.clone())).collect()
+    sample.iter().map(|x| Complex32::from(*x)).collect()
 }
 
 /// Add default values to round sample size up to 2^n.
@@ -32,11 +32,11 @@ pub fn fft_2d_inverse(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex32>> {
 }
 
 pub fn fft_2d_horizontal(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex32>> {
-    samples.iter().map(|y| fft(y)).collect()
+    samples.iter().map(fft).collect()
 }
 
 pub fn fft_2d_horizontal_inverse(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex32>> {
-    samples.iter().map(|y| fft_inverse(y)).collect()
+    samples.iter().map(fft_inverse).collect()
 }
 
 pub fn fft_2d_vertical(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex32>> {
@@ -61,13 +61,13 @@ pub fn fft_2d_vertical_inverse(samples: &Vec<Vec<Complex32>>) -> Vec<Vec<Complex
 
 /// Perform an FFT on a sample of complex numbers.
 pub fn fft(samples: &Vec<Complex32>) -> Vec<Complex32> {
-    assert_sample_size(&samples);
+    assert_sample_size(samples);
     fft_recursive(samples.clone(), 1.)
 }
 
 /// Perform an inverse FFT on a sample of complex numbers.
 pub fn fft_inverse(samples: &Vec<Complex32>) -> Vec<Complex32> {
-    assert_sample_size(&samples);
+    assert_sample_size(samples);
     let sample_size = samples.len() as f32;
     fft_recursive(samples.clone(), -1.)
         .iter()
